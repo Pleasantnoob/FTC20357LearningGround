@@ -14,6 +14,10 @@ import org.firstinspires.ftc.robotcore.external.navigation.UnnormalizedAngleUnit
 
 import java.util.Objects;
 
+/**
+ * Localizer using GoBilda Pinpoint: position from odometry pods (par/perp), rotation from Pinpoint IMU.
+ * Use this as the single source for heading so turret, drive, and pose stay consistent.
+ */
 @Config
 public final class PinpointLocalizer implements Localizer {
     public static class Params {

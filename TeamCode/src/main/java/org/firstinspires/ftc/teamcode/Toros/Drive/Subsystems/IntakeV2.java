@@ -253,8 +253,9 @@ public class IntakeV2 {
 
 
 
+    /** Returns current robot heading in radians (from Pinpoint). Updated each loop in runLauncher(). */
     public static double getHeading(){
-        return h;
+        return heading;
     }
 
     public double calcLaunch1() {
