@@ -9,29 +9,35 @@ import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
 /**
  * Camera-based robot pose estimate from AprilTag (for Dashboard / comparison with odometry).
  *
- * FTC SDK: ftcPose X,Y,Z and Range use the tag library's distance unit (CenterStage = METER, others often INCH).
- * Angles (bearing, elevation, pitch, roll, yaw) are in degrees.
+ * ftcPose X,Y,Z are in MILLIMETERS (SDK CenterStage); we convert to inches. Angles in degrees.
  * Camera frame: X = right, Y = forward from lens, Z = up.
  *
- * With camera tilted 15° up: horizontal component of camera→tag uses cos(15°) on Y and sin(15°) on Z so
- * horizontal forward = Y*cos(15°) - Z*sin(15°). Then rotate by robot heading to get field-frame vector;
- * robot pose = tag position minus that vector.
+ * With camera tilted 15° up: horizontal component uses cos(15°) on Y and sin(15°) on Z.
+ * Robot pose = tag position minus camera→tag in field frame; then subtract camera mounting offset.
  */
 @Config
 public class CameraRelocalization {
+    private static final double MM_TO_IN = 1.0 / 25.4;
+
     /** Camera tilt above horizontal (degrees). Positive = camera aimed up. */
     public static double CAMERA_TILT_DEG = 15.0;
 
-    /** True if tag library uses meters (e.g. CenterStageTagLibrary); false for inches. */
-    public static boolean TAG_LIBRARY_USES_METERS = true;
+    /** AprilTag ID used for relocalization (blue goal only for now). Center Stage blue backdrop. */
+    public static int BLUE_GOAL_TAG_ID = 20;
 
-    private static final double M_TO_IN = 39.37007874;
+    /**
+     * Blue goal tag field position (inches). FTC frame: origin at center of mat, +X = right from red wall, +Y = away from red wall.
+     */
+    public static double BLUE_GOAL_TAG_X = 60.0;
+    public static double BLUE_GOAL_TAG_Y = 72.0;
 
-    /** Field positions of AprilTags (inches). Center Stage backdrop. */
-    public static double TAG_20_X = 60.0;
-    public static double TAG_20_Y = 72.0;
-    public static double TAG_24_X = -60.0;
-    public static double TAG_24_Y = 72.0;
+    /** Camera mounting: inches forward and right of robot center. Applied so pose is robot center, not camera lens. */
+    public static double CAMERA_FORWARD_OFFSET = 0.0;
+    public static double CAMERA_RIGHT_OFFSET = 0.0;
+
+    /** Optional small offset (inches) for final tune to match Pinpoint. */
+    public static double CAMERA_OFFSET_X = 0.0;
+    public static double CAMERA_OFFSET_Y = 0.0;
 
     /**
      * Robot pose (field frame, inches) from one AprilTag detection and known tag field position.
@@ -43,15 +49,10 @@ public class CameraRelocalization {
      * @param robotHeadingRad   Robot heading from odometry (radians). RR convention: 0 = +X, CCW positive.
      */
     public static Pose2d robotPoseFromTag(AprilTagDetection d, double tagFieldXInches, double tagFieldYInches, double robotHeadingRad) {
-        // --- 1. Camera→tag in camera frame: X,Y,Z (same units as tag library) ---
-        double x = d.ftcPose.x;
-        double y = d.ftcPose.y;
-        double z = d.ftcPose.z;
-        if (TAG_LIBRARY_USES_METERS) {
-            x *= M_TO_IN;
-            y *= M_TO_IN;
-            z *= M_TO_IN;
-        }
+        // --- 1. Camera→tag in camera frame: ftcPose X,Y,Z are MILLIMETERS (SDK CenterStage) → convert to inches ---
+        double x = d.ftcPose.x * MM_TO_IN;
+        double y = d.ftcPose.y * MM_TO_IN;
+        double z = d.ftcPose.z * MM_TO_IN;
         // Now x,y,z in inches: right, forward from camera, up.
 
         // --- 2. 15° tilt: project onto horizontal (field) plane. Camera Y is tilted up by CAMERA_TILT_DEG. ---
@@ -68,17 +69,27 @@ public class CameraRelocalization {
         double fieldDy = xHorz * c + yHorz * s;
         // (fieldDx, fieldDy) = camera→tag in field frame (inches).
 
-        // --- 4. Robot position = tag position minus camera→tag (camera is on robot). ---
+        // --- 4. Camera position = tag position minus camera→tag. Then convert to robot center using mounting offset. ---
         double robotX = tagFieldXInches - fieldDx;
         double robotY = tagFieldYInches - fieldDy;
+
+        // --- 5. Camera is forward/right of robot center: subtract that offset in field frame. ---
+        double ch = Math.cos(robotHeadingRad), sh = Math.sin(robotHeadingRad);
+        robotX -= CAMERA_FORWARD_OFFSET * ch;
+        robotY -= CAMERA_FORWARD_OFFSET * sh;
+        robotX += CAMERA_RIGHT_OFFSET * sh;
+        robotY -= CAMERA_RIGHT_OFFSET * ch;
+
+        // --- 6. Optional small calibration offset. ---
+        robotX -= CAMERA_OFFSET_X;
+        robotY -= CAMERA_OFFSET_Y;
 
         return new Pose2d(robotX, robotY, robotHeadingRad);
     }
 
-    /** Get tag field position by ID (inches). */
+    /** Get tag field position by ID (inches). Only blue goal tag supported for relocalization. */
     public static Vector2d getTagFieldPosition(int tagId) {
-        if (tagId == 20) return new Vector2d(TAG_20_X, TAG_20_Y);
-        if (tagId == 24) return new Vector2d(TAG_24_X, TAG_24_Y);
+        if (tagId == BLUE_GOAL_TAG_ID) return new Vector2d(BLUE_GOAL_TAG_X, BLUE_GOAL_TAG_Y);
         return null;
     }
 }

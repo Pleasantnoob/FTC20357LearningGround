@@ -42,8 +42,8 @@ import java.util.List;
  * +Y away from red wall (toward blue). If the robot appears in the wrong place on Dashboard, tune
  * PinpointLocalizer.PARAMS (parYTicks, perpXTicks) and encoder directions in PinpointLocalizer.
  *
- * Turret: When !lockedOn we aim at goal: angleToGoal uses pose + goal (0° = toward goals, ±180° = audience).
- * Dpad Up = 0°, Dpad Down = -180°; else angleToGoal. Lock-on (Y) = vision; B = exit. Left stick X = nudge.
+ * Turret: When !lockedOn we aim at goal: angleToGoal uses pose + goal. Angles in [0, 360) (RR convention).
+ * Dpad Up = 0°, Dpad Down = 180°; else angleToGoal. Lock-on (Y) = vision; B = exit. Left stick X = nudge.
  *
  * Alliance: Dpad Left = Blue, Dpad Right = Red; start and goal set from red* / blue*.
  */
@@ -64,7 +64,10 @@ public class MainDrive extends LinearOpMode {
     public static double redGoalX = -64.0, redGoalY = 60.0;
     /** Blue alliance: start -X -Y (left, back); goal -X -Y; heading -90°. Angle-to-goal uses atan2(goal−pose) so any (goalX,goalY) works. */
     public static double blueStartX = -48.0, blueStartY = -50.0, blueStartHeadingDeg = -90.0;
-    public static double blueGoalX = -64.0, blueGoalY = -60.0;
+    public static double blueGoalX = -70.0, blueGoalY = -64.0;
+
+    /** If turret mechanical 0° is not aligned with robot +X, add offset here (e.g. 90 or -90). Tune on Dashboard. */
+    public static double turretAngleOffsetDeg = 0.0;
 
     public AprilTagProcessor aprilTag;
     public String[] motif = new String[3];
@@ -80,7 +83,7 @@ public class MainDrive extends LinearOpMode {
     private boolean mode = true;
     /** Frozen heading (deg) when lock-on is on; used by turret instead of live gyro. */
     double k = 0;
-    /** Field angle (deg) for turret when !lockedOn: angleToGoal (aim) or 0 / -180 from dpad. */
+    /** Field angle (deg) for turret when !lockedOn: angleToGoal (aim) or 0 / 180 from dpad. [0, 360). */
     private double fieldHoldAngle = 0;
 
     /** Distance to goal (inches); set each loop from odometry pose. */
@@ -173,14 +176,14 @@ public class MainDrive extends LinearOpMode {
             poseHistory.add(pose);
             while (poseHistory.size() > 200) poseHistory.removeFirst();
 
-            // --- 2. Turret: odometry aiming at goal. Field angle: 0° = toward goals (+Y), ±180° = audience. ---
-            turret.botHeading = Math.toDegrees(pose.heading.toDouble());
-            // atan2(dy,dx) gives angle in "0=+X, 90=+Y"; subtract 90 so 0° = toward +Y (goals)
+            // --- 2. Turret: odometry aiming at goal. Field angles [0, 360); 0° = toward +Y (goals), 180° = audience. ---
+            turret.botHeading = Turret.wrapDeg360(Math.toDegrees(pose.heading.toDouble()));
+            // atan2(dy,dx) in same frame as RR: 0° = +X, 90° = +Y, CCW positive. No -90 shift (was double-rotating vs heading).
             double angleToGoalRad = Math.atan2(goalY - pose.position.y, goalX - pose.position.x);
-            double angleToGoalDeg = Turret.wrapDeg180(Math.toDegrees(angleToGoalRad) - 90.0);
+            double angleToGoalDeg = Turret.wrapDeg360(Math.toDegrees(angleToGoalRad) + turretAngleOffsetDeg);
             if (!lockedOn) {
                 if (gamepad2.dpad_up) fieldHoldAngle = 0;
-                else if (gamepad2.dpad_down) fieldHoldAngle = -180;
+                else if (gamepad2.dpad_down) fieldHoldAngle = 180;
                 else fieldHoldAngle = angleToGoalDeg;  // aim at goal by default
                 turret.targetAngle = fieldHoldAngle;
             }
@@ -209,7 +212,7 @@ public class MainDrive extends LinearOpMode {
             for (AprilTagDetection d : aprilTag.getDetections()) {
                 if (d.metadata == null) continue;
                 Vector2d tagPos = CameraRelocalization.getTagFieldPosition(d.id);
-                if (tagPos != null && (d.id == 20 || d.id == 24)) {
+                if (tagPos != null && d.id == CameraRelocalization.BLUE_GOAL_TAG_ID) {
                     cameraPose = CameraRelocalization.robotPoseFromTag(d, tagPos.x, tagPos.y, headingRad);
                     break;
                 }
@@ -246,7 +249,7 @@ public class MainDrive extends LinearOpMode {
             if (logWriter != null) {
                 logCounter++;
                 double rawRange = -1;
-                for (AprilTagDetection d : aprilTag.getDetections()) { if (d.metadata != null && (d.id == 20 || d.id == 24)) { rawRange = d.ftcPose.range; break; } }
+                for (AprilTagDetection d : aprilTag.getDetections()) { if (d.metadata != null && d.id == CameraRelocalization.BLUE_GOAL_TAG_ID) { rawRange = d.ftcPose.range; break; } }
                 double poseHdDeg = Math.toDegrees(pose.heading.toDouble());
                 double camX = cameraPose != null ? cameraPose.position.x : 0, camY = cameraPose != null ? cameraPose.position.y : 0;
                 double errDeg = turret.targetOutputDeg - turret.outputDeg;

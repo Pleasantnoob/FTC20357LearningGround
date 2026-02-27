@@ -20,6 +20,7 @@ import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.teamcode.RR.MecanumDrive;
 import org.firstinspires.ftc.teamcode.RR.PinpointLocalizer;
 import org.firstinspires.ftc.teamcode.Toros.Drive.MainDrive;
+import org.firstinspires.ftc.teamcode.Toros.Drive.ShotPhysics;
 import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
 import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 import org.opencv.core.Mat;
@@ -88,12 +89,11 @@ public class IntakeV2 {
         //double ff = Math.cos(Math.toRadians(targetVel /ticks_in_degrees)) * f1;
             if (gamepad2.left_bumper)
             {
-                //targetVel = airsort;
                 targetVel = -1480;
                 hood.setPosition(0.8);
             }
             else {
-                targetVel = calcLaunch1();
+                updateHoodAndFlywheelFromOdometry();
             }
         if (gamepad1.b) {
             intakeMotor.setPower(0);
@@ -258,41 +258,45 @@ public class IntakeV2 {
         return heading;
     }
 
+    /**
+     * Uses odometry distance to goal (MainDrive.getDistance(), inches) to set hood angle and flywheel target velocity.
+     * Same physics as ShotPhysics / calcLaunch2: hood from distance, speed from speedForShot, then omega -> ticks/s.
+     */
+    public void updateHoodAndFlywheelFromOdometry() {
+        double distanceInches = MainDrive.getDistance();
+        double[] hoodAndSpeed = ShotPhysics.hoodAndSpeedFromDistanceInches(distanceInches);
+        double hoodAngleDeg = hoodAndSpeed[0];
+        double speedMPS = hoodAndSpeed[1];
+
+        // Servo mapping: same as calcLaunch2 (60° = minServo, 40° = maxServo)
+        double hoodValue = minServo + ((60 - hoodAngleDeg) / 20.0) * (maxServo - minServo);
+        hood.setPosition(hoodValue);
+
+        // Speed (m/s) -> angular vel (rad/s) -> ticks/s, with same tuning as calcLaunch2
+        double omega = speedMPS / flywheelRadius;
+        ticksPerSecond = omega * 28.0 / (2.0 * Math.PI);
+        ticksPerSecond *= k;
+        targetVel = (int) ticksPerSecond;
+    }
+
+    /** AprilTag-based launch calc (kept for reference/fallback). */
     public double calcLaunch1() {
         double distance = lastDistance;
         boolean tagSeen = false;
         double hoodAngleDeg = 60;
-
-        // Get distance
         for (AprilTagDetection d : aprilTag.getDetections()) {
             if (d.metadata != null && (d.id == 24 || d.id == 20)) {
                 distance = d.ftcPose.range * 0.0254;
                 tagSeen = true;
                 break;
             }
-
         }
-
-        if (tagSeen){
-            lastDistance = distance;
-        }
-
-        // Define distance
+        if (tagSeen) lastDistance = distance;
         distance = Math.max(0.1, Math.min(4, distance));
-
-        //get hood angle (degrees)
-
         hoodAngleDeg = 60 + (distance - 0.6) * (40 - 60) / (1 - 0.5);
-
-
-        // Define hood angle
         hoodAngleDeg = Math.max(40, Math.min(60, hoodAngleDeg));
-        double hoodValue = minServo + ((60-hoodAngleDeg) / 20) * (maxServo - minServo);
-        //hood.setPosition(hoodValue);
-
-
+        double hoodValue = minServo + ((60 - hoodAngleDeg) / 20) * (maxServo - minServo);
         targetVel = -(speeds.getClosest(distance));
-
         return targetVel;
     }
 

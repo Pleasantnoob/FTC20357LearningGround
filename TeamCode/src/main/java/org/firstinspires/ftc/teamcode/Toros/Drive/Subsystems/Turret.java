@@ -78,10 +78,10 @@ public class Turret {
     /** Target turret output angle (degrees). For logging. */
     public double targetOutputDeg;
 
-    /** Wrap angle to [-180, 180] degrees. Public for use by MainDrive (e.g. field-hold init). */
-    public static double wrapDeg180(double a) {
-        while (a > 180) a -= 360;
-        while (a < -180) a += 360;
+    /** Wrap angle to [0, 360) degrees. RR / field convention. Public for use by MainDrive. */
+    public static double wrapDeg360(double a) {
+        while (a >= 360) a -= 360;
+        while (a < 0) a += 360;
         return a;
     }
 
@@ -121,10 +121,10 @@ public class Turret {
         outputDeg = (ticks / TICKS_PER_MOTOR_REV) * 360.0 * GEAR_RATIO;
         motorPosition = ticks;
         // Field angle: we command robot angle = (botHeading - targetAngle), so field = botHeading - outputDeg to read targetAngle when on target
-        currentAngle = wrapDeg180(botHeading - outputDeg);
+        currentAngle = wrapDeg360(botHeading - outputDeg);
 
-        // Robot-relative target limited to [-180, 180]
-        targetOutputDeg = wrapDeg180(botHeading - targetAngle);
+        // Robot-relative target in [0, 360)
+        targetOutputDeg = wrapDeg360(botHeading - targetAngle);
         // Target position = nearest tick position that equals targetOutputDeg (mod 360) so turret holds
         double revs = (ticks / TICKS_PER_DEG - targetOutputDeg) / 360.0;
         double k = Math.round(revs);
@@ -137,9 +137,9 @@ public class Turret {
         power = pid2 + ff;
         turretMotor.setPower(turretDriveEnabled ? power : 0);
 
-        // Gamepad: left stick X nudge (reversed so left = turret left); wrap to [-180, 180]
+        // Gamepad: left stick X nudge (reversed so left = turret left); angles in [0, 360)
         if (Math.abs(gamepad2.left_stick_x) > 0.1) {
-            targetAngle = wrapDeg180(targetAngle - gamepad2.left_stick_x * 4);
+            targetAngle = wrapDeg360(targetAngle - gamepad2.left_stick_x * 4);
         }
         if (gamepad2.aWasPressed()) {
             targetAngle = 0;
@@ -159,11 +159,10 @@ public class Turret {
     public void runTurretNoGyro(double k) {
         double ticks = turretMotor.getCurrentPosition();
         outputDeg = (ticks / TICKS_PER_MOTOR_REV) * 360.0 * GEAR_RATIO;
-        currentAngle = wrapDeg180(outputDeg) + k;
-        currentAngle = wrapDeg180(currentAngle);
+        currentAngle = wrapDeg360(wrapDeg360(outputDeg) + k);
         motorPosition = ticks;
 
-        targetOutputDeg = targetAngle - k;
+        targetOutputDeg = wrapDeg360(targetAngle - k);
         targetPos = targetOutputDeg * TICKS_PER_DEG;
 
         SimpleMotorFeedforward feedforward = new SimpleMotorFeedforward(kS, kV, kA);
@@ -174,7 +173,7 @@ public class Turret {
         turretMotor.setPower(turretDriveEnabled ? power : 0);
 
         if (Math.abs(gamepad2.left_stick_x) > 0.1) {
-            targetAngle = wrapDeg180(targetAngle - gamepad2.left_stick_x * 4);
+            targetAngle = wrapDeg360(targetAngle - gamepad2.left_stick_x * 4);
         }
         if (gamepad2.aWasPressed()) {
             targetAngle = 0;
@@ -190,7 +189,7 @@ public class Turret {
         targetAngle = (int) target;
     }
 
-    /** Returns current turret angle in field frame (degrees), [-180, 180]. For field-relative hold and wrap-around. */
+    /** Returns current turret angle in field frame (degrees), [0, 360). */
     public double getTurretAngle() {
         return currentAngle;
     }
@@ -200,14 +199,11 @@ public class Turret {
         return currentAngle;
     }
 
-    /**
-     * Returns current turret angle relative to robot (degrees), clamped to [-180, 180].
-     * Uses current encoder position only (no heading).
-     */
+    /** Returns current turret angle relative to robot (degrees), [0, 360). Uses encoder only. */
     public double getTurretAngleRobot() {
         double ticks = turretMotor.getCurrentPosition();
         double robotDeg = (ticks / TICKS_PER_MOTOR_REV) * 360.0 * GEAR_RATIO;
-        return Math.max(-180, Math.min(180, wrapDeg180(robotDeg)));
+        return wrapDeg360(robotDeg);
     }
 
     /** Direct power control (no PID). Use for manual testing only. */

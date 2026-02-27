@@ -83,7 +83,7 @@ So the **last** code to configure the Pinpoint wins for **position**; **heading*
 
 ## 6. Turret field-relative hold and angles (MainDrive)
 
-**Field-relative hold:** When not locked on, MainDrive aims turret at goal by default: `angleToGoalDeg` = atan2(goal − pose) with **0° = toward goals (+Y)**, ±180° = audience (subtract 90° from standard atan2). Dpad Up = 0°, Dpad Down = -180°; else `fieldHoldAngle = angleToGoalDeg`. Left stick X nudge updates hold. **Angle APIs:** `getTurretAngleField()` = field-relative; `getTurretAngleRobot()` = robot-relative (encoder). **Alliance:** Dpad Left = Blue, Right = Red; start and goal from `red*` / `blue*` (Dashboard-tunable). Pose and goal are in FTC field frame (see §3); robot position on Dashboard = Pinpoint (pods+IMU).
+**Field-relative hold:** When not locked on, MainDrive aims turret at goal by default: `angleToGoalDeg` = atan2(goal − pose) then wrap to **[0, 360)** (RR convention). Dpad Up = 0°, Dpad Down = 180°; else `fieldHoldAngle = angleToGoalDeg`. Left stick X nudge updates hold. **Angle APIs:** `getTurretAngleField()` / `getTurretAngleRobot()` return [0, 360). **Alliance:** Dpad Left = Blue, Right = Red; start and goal from `red*` / `blue*` (Dashboard-tunable). Pose and goal are in FTC field frame (see §3); robot position on Dashboard = Pinpoint (pods+IMU).
 
 ---
 

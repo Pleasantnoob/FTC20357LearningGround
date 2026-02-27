@@ -37,4 +37,20 @@ public final class ShotPhysics {
         double t = timeInAir(v, theta);
         return new double[] { v, t };
     }
+
+    /**
+     * From odometry distance to goal (inches), compute hood angle (deg) and launch speed (m/s).
+     * Uses same linear hood mapping as IntakeV2: closer = steeper (60°), farther = flatter (40°).
+     * Returns { hoodAngleDeg, speedMPS }. Distance clamped to valid range for physics.
+     */
+    public static double[] hoodAndSpeedFromDistanceInches(double distanceInches) {
+        double dM = distanceInches * 0.0254;
+        dM = Math.max(0.3, Math.min(3.5, dM));
+        // Linear: at 0.5 m use 60°, at 1.5 m use 40° (match IntakeV2 style)
+        double hoodAngleDeg = 60.0 + (dM - 0.5) * (40.0 - 60.0) / 1.0;
+        hoodAngleDeg = Math.max(40, Math.min(60, hoodAngleDeg));
+        double theta = Math.toRadians(hoodAngleDeg);
+        double v = speedForShot(dM, theta);
+        return new double[] { hoodAngleDeg, v };
+    }
 }
