@@ -4,7 +4,6 @@ import com.acmerobotics.dashboard.FtcDashboard;
 import com.acmerobotics.dashboard.config.Config;
 import com.acmerobotics.dashboard.telemetry.MultipleTelemetry;
 import com.arcrobotics.ftclib.controller.PIDController;
-import com.arcrobotics.ftclib.controller.wpilibcontroller.ArmFeedforward;
 import com.arcrobotics.ftclib.controller.wpilibcontroller.SimpleMotorFeedforward;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
@@ -12,47 +11,50 @@ import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 
-
+/**
+ * Standalone teleop for tuning turret PID + feedforward by position (encoder ticks).
+ * Use FTC Dashboard to adjust p1, i1, d1, kS, kV, kA and target1 (target position in ticks).
+ * Main turret control in real teleop is in Subsystems.Turret (angle-based with odometry).
+ */
 @Config
 @TeleOp
-
 public class TurretPidF extends LinearOpMode {
     private PIDController controller;
 
-
     public static double p1 = 0, i1 = 0, d1 = 0;
-    public static double kS = 0,kV = 0, kA = 0;
+    public static double kS = 0, kV = 0, kA = 0;
+    /** Target position in encoder ticks (tune via Dashboard). */
     public static int target1 = 0;
 
     public static int vel = 0, accel = 0;
 
     private DcMotorEx turretMotor;
+
     @Override
     public void runOpMode() throws InterruptedException {
-        controller = new PIDController(p1,i1,d1);
+        controller = new PIDController(p1, i1, d1);
         telemetry = new MultipleTelemetry(telemetry, FtcDashboard.getInstance().getTelemetry());
 
-        turretMotor = hardwareMap.get(DcMotorEx.class,"turret");
+        turretMotor = hardwareMap.get(DcMotorEx.class, "turret");
         turretMotor.setDirection(DcMotorSimple.Direction.REVERSE);
         turretMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
         turretMotor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         turretMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
 
         waitForStart();
-        while (opModeIsActive()){
-            SimpleMotorFeedforward feedforward = new SimpleMotorFeedforward(kS,kV,kA);
+        while (opModeIsActive()) {
+            SimpleMotorFeedforward feedforward = new SimpleMotorFeedforward(kS, kV, kA);
 
-            controller.setPID(p1,i1,d1);
+            controller.setPID(p1, i1, d1);
             double turretPos = turretMotor.getCurrentPosition();
             double pid2 = controller.calculate(turretPos, target1);
-            double ff = feedforward.calculate(target1);
+            double ff = feedforward.calculate(0); // velocity feedforward; 0 for position hold
 
             turretMotor.setPower(pid2 + ff);
 
-            telemetry.addData("turret pos",turretPos );
-            telemetry.addData("turret target",target1);
+            telemetry.addData("turret pos", turretPos);
+            telemetry.addData("turret target", target1);
             telemetry.update();
-
         }
     }
 }

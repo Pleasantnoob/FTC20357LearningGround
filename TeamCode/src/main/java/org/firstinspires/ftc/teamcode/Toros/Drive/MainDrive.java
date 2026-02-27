@@ -35,25 +35,36 @@ import java.util.LinkedList;
 import java.util.List;
 
 /**
- * Main teleop: all drive, odometry, turret, intake, and FTC Dashboard visualization live here.
+ * Main teleop: drive, odometry, turret, intake, FTC Dashboard.
  *
- * Loop: (1) Odometry + distance to goal. (2) When !lockedOn, turret.targetAngle = field angle to goal (turret then aims the line; robot rotation via runTurretGyro/botHeading). (3) Drive, turret run, lock-on, intake. (4) Camera relocalization (display only). (5) Dashboard: pose history path, robot, goal, aim line, camera pose, shot stats.
+ * Pose (robot position + heading): from PinpointLocalizer = GoBilda Pinpoint odometry pods + IMU (same as RR).
+ * Start position and goal are in FTC official field frame: origin at center of mat, +X to the right from red wall,
+ * +Y away from red wall (toward blue). If the robot appears in the wrong place on Dashboard, tune
+ * PinpointLocalizer.PARAMS (parYTicks, perpXTicks) and encoder directions in PinpointLocalizer.
  *
- * Turret: When not locked on, turret aims at goal (same angle as the yellow line). Lock-on (Y) = vision drives targetAngle; B = exit. Left stick X = nudge target. A = 0°. X = reset encoder.
+ * Turret: When !lockedOn we aim at goal: angleToGoal uses pose + goal (0° = toward goals, ±180° = audience).
+ * Dpad Up = 0°, Dpad Down = -180°; else angleToGoal. Lock-on (Y) = vision; B = exit. Left stick X = nudge.
+ *
+ * Alliance: Dpad Left = Blue, Dpad Right = Red; start and goal set from red* / blue*.
  */
 @TeleOp(name = "MainDrive")
 @Config
 public class MainDrive extends LinearOpMode {
     private static final boolean USE_WEBCAM = true;
 
-    /** Start pose for odometry (inches, degrees). Tune on FTC Dashboard or here. */
+    /** Start pose and goal (inches, degrees). Set from alliance mode (blue/red). Frame: from audience +Y=forward, -X=left, +X=right, -Y=back. */
     public static double startX = -48.0;
     public static double startY = -50.0;
-    public static double startHeadingDeg = 270.0;
-
-    /** Goal position for aim line, shot physics, and turret auto-aim (inches). Blue goal default. */
+    public static double startHeadingDeg = -90.0;
     public static double goalX = -64.0;
     public static double goalY = -60.0;
+
+    /** Red alliance: start -X left, +Y; goal -X left, +Y; heading 90°. */
+    public static double redStartX = -48.0, redStartY = 50.0, redStartHeadingDeg = 90.0;
+    public static double redGoalX = -64.0, redGoalY = 60.0;
+    /** Blue alliance: start -X -Y (left, back); goal -X -Y; heading -90°. Angle-to-goal uses atan2(goal−pose) so any (goalX,goalY) works. */
+    public static double blueStartX = -48.0, blueStartY = -50.0, blueStartHeadingDeg = -90.0;
+    public static double blueGoalX = -64.0, blueGoalY = -60.0;
 
     public AprilTagProcessor aprilTag;
     public String[] motif = new String[3];
@@ -65,9 +76,12 @@ public class MainDrive extends LinearOpMode {
     List<LynxModule> allHubs;
     Servo led;
     private boolean lockedOn = false;
-    private boolean mode = false;
+    /** true = blue alliance (start/goal from blue*), false = red (red*). Dpad Left = Blue, Dpad Right = Red. */
+    private boolean mode = true;
     /** Frozen heading (deg) when lock-on is on; used by turret instead of live gyro. */
     double k = 0;
+    /** Field angle (deg) for turret when !lockedOn: angleToGoal (aim) or 0 / -180 from dpad. */
+    private double fieldHoldAngle = 0;
 
     /** Distance to goal (inches); set each loop from odometry pose. */
     public static double distance = 0;
@@ -105,11 +119,29 @@ public class MainDrive extends LinearOpMode {
         led = hardwareMap.get(Servo.class, "LED");
         intake = new IntakeV2(hardwareMap, gamepad1, gamepad2, aprilTag);
         turret = new Turret(hardwareMap, gamepad2);
-        // Odometry starts at configurable pose; localizer runs from first loop
+        applyAllianceMode();
         Pose2d initialPose = new Pose2d(startX, startY, Math.toRadians(startHeadingDeg));
         mecanumDrive = new MecanumDrive(hardwareMap, initialPose);
         mecanumDrive.localizer.setPose(initialPose);
 
+        // During init: Dpad Left = Blue, Dpad Right = Red (start/goal and pose update)
+        while (!isStarted() && opModeIsActive()) {
+            if (gamepad1.dpad_left) {
+                mode = true;
+                applyAllianceMode();
+                mecanumDrive.localizer.setPose(new Pose2d(startX, startY, Math.toRadians(startHeadingDeg)));
+            } else if (gamepad1.dpad_right) {
+                mode = false;
+                applyAllianceMode();
+                mecanumDrive.localizer.setPose(new Pose2d(startX, startY, Math.toRadians(startHeadingDeg)));
+            }
+            telemetry.addData("Alliance", mode ? "BLUE" : "RED");
+            telemetry.addData("Start", "%.0f, %.0f @ %.0f deg", startX, startY, startHeadingDeg);
+            telemetry.addData("Goal", "%.0f, %.0f", goalX, goalY);
+            telemetry.addData(">", "Dpad L=Blue R=Red, Play=start");
+            telemetry.update();
+            sleep(20);
+        }
         waitForStart();
 
         // Debug log: uses app context so it works on Control Hub. Pull with:
@@ -141,12 +173,20 @@ public class MainDrive extends LinearOpMode {
             poseHistory.add(pose);
             while (poseHistory.size() > 200) poseHistory.removeFirst();
 
-            // --- 2. Turret: use same heading as odometry (pose). Pose comes from PinpointLocalizer = Pinpoint IMU + pods (single source for rotation). ---
+            // --- 2. Turret: odometry aiming at goal. Field angle: 0° = toward goals (+Y), ±180° = audience. ---
             turret.botHeading = Math.toDegrees(pose.heading.toDouble());
+            // atan2(dy,dx) gives angle in "0=+X, 90=+Y"; subtract 90 so 0° = toward +Y (goals)
+            double angleToGoalRad = Math.atan2(goalY - pose.position.y, goalX - pose.position.x);
+            double angleToGoalDeg = Turret.wrapDeg180(Math.toDegrees(angleToGoalRad) - 90.0);
             if (!lockedOn) {
-                double angleToGoalDeg = Math.toDegrees(Math.atan2(goalY - pose.position.y, goalX - pose.position.x));
-                turret.targetAngle = angleToGoalDeg;
+                if (gamepad2.dpad_up) fieldHoldAngle = 0;
+                else if (gamepad2.dpad_down) fieldHoldAngle = -180;
+                else fieldHoldAngle = angleToGoalDeg;  // aim at goal by default
+                turret.targetAngle = fieldHoldAngle;
             }
+            // Alliance can be changed during run: goal/start update (pose not reset)
+            if (gamepad1.dpad_left) { mode = true; applyAllianceMode(); }
+            else if (gamepad1.dpad_right) { mode = false; applyAllianceMode(); }
             // --- 3. Telemetry, drive, turret run, lock-on, intake ---
             led.setPosition(1);
             initTelemetry();
@@ -154,19 +194,23 @@ public class MainDrive extends LinearOpMode {
             getMotif();
             drivetrain.driveRobotCentric();
             if (lockedOn) turret.runTurretNoGyro(k);
-            else turret.runTurretGyro();
+            else {
+                turret.runTurretGyro();
+                fieldHoldAngle = turret.targetAngle;
+            }
             lockOn();
             intake.runLauncher();
             intake.runIntake();
             intake.transfer();
 
-            // --- 4. Camera relocalization: pose from AprilTag (15° tilt in CameraRelocalization); display only ---
+            // --- 4. Camera relocalization: pose from AprilTag (15° tilt, odometry heading); display only ---
             cameraPose = null;
+            double headingRad = pose.heading.toDouble();
             for (AprilTagDetection d : aprilTag.getDetections()) {
                 if (d.metadata == null) continue;
                 Vector2d tagPos = CameraRelocalization.getTagFieldPosition(d.id);
                 if (tagPos != null && (d.id == 20 || d.id == 24)) {
-                    cameraPose = CameraRelocalization.robotPoseFromTag(d, tagPos.x, tagPos.y);
+                    cameraPose = CameraRelocalization.robotPoseFromTag(d, tagPos.x, tagPos.y, headingRad);
                     break;
                 }
             }
@@ -187,29 +231,37 @@ public class MainDrive extends LinearOpMode {
             packet.put("odom_x", pose.position.x);
             packet.put("odom_y", pose.position.y);
             packet.put("odom_heading_deg", Math.toDegrees(pose.heading.toDouble()));
+            packet.put("pose_src", "Pinpoint (pods+IMU)");
+            packet.put("angle_to_goal_deg", angleToGoalDeg);
+            packet.put("turret_field_deg", turret.getTurretAngleField());
+            packet.put("turret_robot_deg", turret.getTurretAngleRobot());
+            packet.put("field_hold_deg", fieldHoldAngle);
             if (cameraPose != null) {
                 packet.put("camera_x", cameraPose.position.x);
                 packet.put("camera_y", cameraPose.position.y);
             }
             FtcDashboard.getInstance().sendTelemetryPacket(packet);
 
-            // Log only when something changed meaningfully (avoid spam when idle)
+            // Log when something changed meaningfully OR at fixed intervals (more frequent = more data)
             if (logWriter != null) {
                 logCounter++;
                 double rawRange = -1;
                 for (AprilTagDetection d : aprilTag.getDetections()) { if (d.metadata != null && (d.id == 20 || d.id == 24)) { rawRange = d.ftcPose.range; break; } }
                 double poseHdDeg = Math.toDegrees(pose.heading.toDouble());
                 double camX = cameraPose != null ? cameraPose.position.x : 0, camY = cameraPose != null ? cameraPose.position.y : 0;
+                double errDeg = turret.targetOutputDeg - turret.outputDeg;
+                double distToGoal = Math.hypot(pose.position.x - goalX, pose.position.y - goalY);
                 boolean angChanged = Math.abs(turret.getTurretAngle() - lastLogCurAng) > LOG_ANG_THRESH || Math.abs(turret.targetAngle - lastLogTgtAng) > LOG_ANG_THRESH || Math.abs(turret.botHeading - lastLogBotHd) > LOG_ANG_THRESH;
                 boolean posChanged = Math.abs(pose.position.x - lastLogPoseX) > LOG_POS_THRESH || Math.abs(pose.position.y - lastLogPoseY) > LOG_POS_THRESH;
                 boolean ticksChanged = Math.abs(turret.motorPosition - lastLogTicks) > LOG_TICKS_THRESH || Math.abs(turret.targetPos - lastLogTargetPos) > LOG_TICKS_THRESH;
                 boolean camChanged = Math.abs(rawRange - lastLogRange) > 2 || Math.abs(camX - lastLogCamX) > LOG_POS_THRESH || Math.abs(camY - lastLogCamY) > LOG_POS_THRESH;
-                boolean periodic = (logCounter % 100 == 0);
+                boolean periodic = (logCounter % 15 == 0);
                 if (angChanged || posChanged || ticksChanged || camChanged || periodic) {
                     try {
-                        logWriter.append(String.format("%d ticks=%.0f tgtPos=%.0f curAng=%.1f tgtAng=%.1f botHd=%.1f poseHd=%.1f pose=(%.1f,%.1f) rangeRaw=%.2f camX=%.1f camY=%.1f\n",
-                                logCounter, turret.motorPosition, turret.targetPos, turret.getTurretAngle(), turret.targetAngle, turret.botHeading, poseHdDeg,
-                                pose.position.x, pose.position.y, rawRange, camX, camY));
+                        logWriter.append(String.format("%d ticks=%.0f tgtPos=%.0f outDeg=%.1f tgtOutDeg=%.1f errDeg=%.1f curAng=%.1f tgtAng=%.1f botHd=%.1f poseHd=%.1f pose=(%.1f,%.1f) distGoal=%.1f turretPwr=%.3f rangeRaw=%.2f camX=%.1f camY=%.1f\n",
+                                logCounter, turret.motorPosition, turret.targetPos, turret.outputDeg, turret.targetOutputDeg, errDeg,
+                                turret.getTurretAngle(), turret.targetAngle, turret.botHeading, poseHdDeg,
+                                pose.position.x, pose.position.y, distToGoal, turret.power, rawRange, camX, camY));
                         logWriter.flush();
                         lastLogTicks = turret.motorPosition; lastLogCurAng = turret.getTurretAngle(); lastLogTgtAng = turret.targetAngle; lastLogBotHd = turret.botHeading;
                         lastLogPoseX = pose.position.x; lastLogPoseY = pose.position.y; lastLogTargetPos = turret.targetPos; lastLogRange = rawRange; lastLogCamX = camX; lastLogCamY = camY;
@@ -288,25 +340,49 @@ public class MainDrive extends LinearOpMode {
 
     }   // end method initAprilTag()
     //Telemetry which is good for debugging and seeing how we preform
-    private void initTelemetry () {
-        if(!mode) {
-            telemetry.addData("Mode", mode);
+    /** Sets start pose and goal from current alliance mode (red vs blue). */
+    private void applyAllianceMode() {
+        if (mode) {
+            startX = blueStartX; startY = blueStartY; startHeadingDeg = blueStartHeadingDeg;
+            goalX = blueGoalX; goalY = blueGoalY;
+        } else {
+            startX = redStartX; startY = redStartY; startHeadingDeg = redStartHeadingDeg;
+            goalX = redGoalX; goalY = redGoalY;
         }
-        telemetry.addData("Toggle",drivetrain.getXToggle());
-        telemetry.addData("Toggle",drivetrain.getRToggle());
-        telemetry.addData("Color sensor red", intake.c3.red());
-        telemetry.addData("Color sensor green", intake.c3.green());
-        telemetry.addData("Color sensor blue", intake.c3.blue());
-        telemetry.addData("launcher vel", intake.getLauncherSpeed());
-        telemetry.addData("Angle", turret.getTurretAngle());
-        telemetry.addData("heading", drivetrain.getHeading());
-        telemetry.addData("targetVel", intake.getTargetVel());
-        telemetry.addData("Target Angle", turret.targetAngle);
-        telemetry.addData("Comp", intake.calcShot(IntakeV2.getHeading()));
-        telemetry.addData("Pose", mecanumDrive.localizer.getPose());
-        telemetry.addData("Distance", distance);
-        telemetry.addData("hood", intake.getHood());
+    }
 
+    /** Telemetry grouped by subsystem so you can find what you need to debug. */
+    private void initTelemetry() {
+        // --- 1. Alliance & localization (odometry, pose, goal) ---
+        telemetry.addLine("--- Alliance & localization ---");
+        telemetry.addData("Alliance", mode ? "BLUE" : "RED");
+        telemetry.addData("Pose (x, y, heading)", mecanumDrive.localizer.getPose());
+        telemetry.addData("Heading deg", Math.toDegrees(mecanumDrive.localizer.getPose().heading.toDouble()));
+        telemetry.addData("Dist to goal in", distance);
+        telemetry.addData("Goal (x, y)", "%.0f, %.0f", goalX, goalY);
+
+        // --- 2. Drive ---
+        telemetry.addLine("");
+        telemetry.addLine("--- Drive ---");
+        telemetry.addData("X toggle (strafe)", drivetrain.getXToggle());
+        telemetry.addData("R toggle (rotate)", drivetrain.getRToggle());
+
+        // --- 3. Turret (field-relative hold) ---
+        telemetry.addLine("");
+        telemetry.addLine("--- Turret ---");
+        telemetry.addData("Field deg", turret.getTurretAngleField());
+        telemetry.addData("Robot deg", turret.getTurretAngleRobot());
+        telemetry.addData("Target (hold) field deg", turret.targetAngle);
+        telemetry.addData("Lock-on", lockedOn);
+
+        // --- 4. Intake / launcher ---
+        telemetry.addLine("");
+        telemetry.addLine("--- Intake / launcher ---");
+        telemetry.addData("Launcher vel", intake.getLauncherSpeed());
+        telemetry.addData("Target vel", intake.getTargetVel());
+        telemetry.addData("Hood", intake.getHood());
+        telemetry.addData("Comp (calcShot)", intake.calcShot(IntakeV2.getHeading()));
+        telemetry.addData("Color R/G/B", "%d %d %d", intake.c3.red(), intake.c3.green(), intake.c3.blue());
 
         telemetry.update();
     }
@@ -348,7 +424,8 @@ public class MainDrive extends LinearOpMode {
 
 
     private void telemetryAprilTag() {
-
+        telemetry.addLine("");
+        telemetry.addLine("--- AprilTag / vision ---");
         List<AprilTagDetection> currentDetections = aprilTag.getDetections();
         telemetry.addData("# AprilTags Detected", currentDetections.size());
 

@@ -1,5 +1,6 @@
 package org.firstinspires.ftc.teamcode.Toros.Drive.Subsystems;
 
+import com.acmerobotics.dashboard.config.Config;
 import com.arcrobotics.ftclib.controller.PIDController;
 import com.arcrobotics.ftclib.controller.wpilibcontroller.SimpleMotorFeedforward;
 import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
@@ -20,11 +21,15 @@ import org.firstinspires.ftc.teamcode.RR.PinpointLocalizer;
  *   - TICKS_PER_MOTOR_REV: encoder ticks per one full rotation of the motor shaft (384.5 for the motor used).
  *   - GEAR_RATIO: output rotation / motor rotation (2/5 means turret rotates 2/5 of a full turn per motor revolution).
  *
- * Important: We always take the SHORTEST path. (targetAngle - botHeading) is wrapped to [-180, 180] and
- * we command targetPos = currentTicks + (wrapped error in degrees)*ticksPerDeg so the turret never rotates
- * more than 180° and correctly counter-rotates when the robot turns (stays on goal).
+ * Target is the turret's field angle (set to angle to goal = line robot→goal). No shortest-path wrap: targetPos = (targetAngle - botHeading) * ticksPerDeg.
+ * At init: encoder 0 → turret output 0 → turret field angle = robot heading (turret same as robot). So robot at 90° → turret at 90° field, 0° relative to robot.
+ * When on target, curAng (turret field angle) should match tgtAng (angle to goal).
  */
+@Config
 public class Turret {
+    /** When false, turret motor gets 0 power (target angle still computed and logged). true = turret moves to hold field angle. */
+    public static boolean turretDriveEnabled = true;
+
     // ========== Tuning constants (tune via FTC Dashboard or here). Do not change odometry constants below without verifying on robot. ==========
     public static double p1 = 0.00625, i1 = 0.00, d1 = 0.00055;
     public static double kS = 0, kV = 0.000125, kA = 0;
@@ -68,9 +73,13 @@ public class Turret {
 
     /** Current turret angle in field frame (degrees). Same as getTurretAngle(). */
     double currentAngle;
+    /** Turret output angle (degrees, robot-relative). For logging. */
+    public double outputDeg;
+    /** Target turret output angle (degrees). For logging. */
+    public double targetOutputDeg;
 
-    /** Wrap angle to [-180, 180] degrees. */
-    private static double wrapDeg180(double a) {
+    /** Wrap angle to [-180, 180] degrees. Public for use by MainDrive (e.g. field-hold init). */
+    public static double wrapDeg180(double a) {
         while (a > 180) a -= 360;
         while (a < -180) a += 360;
         return a;
@@ -107,35 +116,30 @@ public class Turret {
      * Call this every teleop loop when not in lock-on mode.
      */
     public void runTurretGyro() {
-        // botHeading is set by MainDrive from pose.heading (odometry) so turret and angleToGoal use same frame
-
+        // botHeading is set by MainDrive from pose.heading (odometry)
         double ticks = turretMotor.getCurrentPosition();
-        double outputDeg = (ticks / TICKS_PER_MOTOR_REV) * 360.0 * GEAR_RATIO;
-        currentAngle = wrapDeg180(outputDeg) + botHeading;
-        currentAngle = wrapDeg180(currentAngle);
+        outputDeg = (ticks / TICKS_PER_MOTOR_REV) * 360.0 * GEAR_RATIO;
         motorPosition = ticks;
+        // Field angle: we command robot angle = (botHeading - targetAngle), so field = botHeading - outputDeg to read targetAngle when on target
+        currentAngle = wrapDeg180(botHeading - outputDeg);
 
-        // Shortest path: target output wrapped to [-180,180], error wrapped, then targetPos = current + error (ticks)
-        double targetOutputDeg = wrapDeg180(targetAngle - botHeading);
-        double currentOutputWrapped = wrapDeg180(outputDeg);
-        double errorDeg = wrapDeg180(targetOutputDeg - currentOutputWrapped);
-        targetPos = ticks + errorDeg * TICKS_PER_DEG;
+        // Robot-relative target limited to [-180, 180]
+        targetOutputDeg = wrapDeg180(botHeading - targetAngle);
+        // Target position = nearest tick position that equals targetOutputDeg (mod 360) so turret holds
+        double revs = (ticks / TICKS_PER_DEG - targetOutputDeg) / 360.0;
+        double k = Math.round(revs);
+        targetPos = (targetOutputDeg + 360.0 * k) * TICKS_PER_DEG;
 
         SimpleMotorFeedforward feedforward = new SimpleMotorFeedforward(kS, kV, kA);
         controller.setPID(p1, i1, d1);
         double pid2 = controller.calculate(ticks, targetPos);
         double ff = feedforward.calculate(0);
         power = pid2 + ff;
-        turretMotor.setPower(power);
+        turretMotor.setPower(turretDriveEnabled ? power : 0);
 
-        // Wrap target angle to avoid unbounded growth when turret is driven past ±150°
-        if (Math.abs(targetAngle) > 150) {
-            targetAngle = -targetAngle + Math.copySign(10, targetAngle);
-        }
-
-        // Gamepad: left stick X adjusts target angle
+        // Gamepad: left stick X nudge (reversed so left = turret left); wrap to [-180, 180]
         if (Math.abs(gamepad2.left_stick_x) > 0.1) {
-            targetAngle += gamepad2.left_stick_x * 4;
+            targetAngle = wrapDeg180(targetAngle - gamepad2.left_stick_x * 4);
         }
         if (gamepad2.aWasPressed()) {
             targetAngle = 0;
@@ -154,29 +158,23 @@ public class Turret {
      */
     public void runTurretNoGyro(double k) {
         double ticks = turretMotor.getCurrentPosition();
-        double outputDeg = (ticks / TICKS_PER_MOTOR_REV) * 360.0 * GEAR_RATIO;
+        outputDeg = (ticks / TICKS_PER_MOTOR_REV) * 360.0 * GEAR_RATIO;
         currentAngle = wrapDeg180(outputDeg) + k;
         currentAngle = wrapDeg180(currentAngle);
         motorPosition = ticks;
 
-        double targetOutputDeg = wrapDeg180(targetAngle - k);
-        double currentOutputWrapped = wrapDeg180(outputDeg);
-        double errorDeg = wrapDeg180(targetOutputDeg - currentOutputWrapped);
-        targetPos = ticks + errorDeg * TICKS_PER_DEG;
+        targetOutputDeg = targetAngle - k;
+        targetPos = targetOutputDeg * TICKS_PER_DEG;
 
         SimpleMotorFeedforward feedforward = new SimpleMotorFeedforward(kS, kV, kA);
         controller.setPID(p1, i1, d1);
         double pid2 = controller.calculate(ticks, targetPos);
         double ff = feedforward.calculate(0);
         power = pid2 + ff;
-        turretMotor.setPower(power);
-
-        if (Math.abs(targetAngle) > 80) {
-            targetAngle = -targetAngle + Math.copySign(10, targetAngle);
-        }
+        turretMotor.setPower(turretDriveEnabled ? power : 0);
 
         if (Math.abs(gamepad2.left_stick_x) > 0.1) {
-            targetAngle += gamepad2.left_stick_x * 4;
+            targetAngle = wrapDeg180(targetAngle - gamepad2.left_stick_x * 4);
         }
         if (gamepad2.aWasPressed()) {
             targetAngle = 0;
@@ -192,9 +190,24 @@ public class Turret {
         targetAngle = (int) target;
     }
 
-    /** Returns current turret angle in field frame (degrees). */
+    /** Returns current turret angle in field frame (degrees), [-180, 180]. For field-relative hold and wrap-around. */
     public double getTurretAngle() {
         return currentAngle;
+    }
+
+    /** Same as getTurretAngle(); use when you explicitly need field-relative angle. */
+    public double getTurretAngleField() {
+        return currentAngle;
+    }
+
+    /**
+     * Returns current turret angle relative to robot (degrees), clamped to [-180, 180].
+     * Uses current encoder position only (no heading).
+     */
+    public double getTurretAngleRobot() {
+        double ticks = turretMotor.getCurrentPosition();
+        double robotDeg = (ticks / TICKS_PER_MOTOR_REV) * 360.0 * GEAR_RATIO;
+        return Math.max(-180, Math.min(180, wrapDeg180(robotDeg)));
     }
 
     /** Direct power control (no PID). Use for manual testing only. */

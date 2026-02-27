@@ -179,9 +179,10 @@ public class BlueNearExp extends LinearOpMode {
     }
 
     IMU imu;
-    public class Turret{
-        public Turret(HardwareMap hardwareMap){
-            turretMotor = hardwareMap.get(DcMotorEx.class,"turret");
+    /** Turret for autonomous. Odometry: 384.5 ticks/rev, gear 2/5. targetAngle in degrees (robot-relative). */
+    public class Turret {
+        public Turret(HardwareMap hardwareMap) {
+            turretMotor = hardwareMap.get(DcMotorEx.class, "turret");
             turretMotor.setDirection(DcMotorSimple.Direction.REVERSE);
             turretMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
             turretMotor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
@@ -192,42 +193,33 @@ public class BlueNearExp extends LinearOpMode {
                     RevHubOrientationOnRobot.LogoFacingDirection.FORWARD,
                     RevHubOrientationOnRobot.UsbFacingDirection.UP
             ));
-
             imu.initialize(parameters);
-
         }
-        public class turretAction implements Action{
 
+        public class turretAction implements Action {
             private boolean init = false;
+
             @Override
             public boolean run(@NonNull TelemetryPacket telemetryPacket) {
-                if(!init){
-                    controller.setPID(p2,i2,d2);
+                if (!init) {
+                    controller.setPID(p2, i2, d2);
                     init = true;
                 }
                 double botHeading = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES);
-
                 double currentAngle = (turretMotor.getCurrentPosition() / 384.5) * 360 * gearRatio;
-
                 double targetPos = (384.5 * targetAngle) / 360 * (5.0 / 2.0);
-                double motorPosition = turretMotor.getCurrentPosition();
-                SimpleMotorFeedforward feedforward = new SimpleMotorFeedforward(kS2, kV2, kA2);
-
-                controller.setPID(p1,i1,d1);
                 double turretPos = turretMotor.getCurrentPosition();
+                SimpleMotorFeedforward feedforward = new SimpleMotorFeedforward(kS2, kV2, kA2);
                 double pid2 = controller.calculate(turretPos, targetPos);
-                double ff = feedforward.calculate(targetPos);
-
-
+                double ff = feedforward.calculate(0);
                 double power = pid2 + ff;
-
                 turretMotor.setPower(power);
                 return true;
             }
         }
-        public Action turretGo(){return new turretAction();}
-        public Action changeAngle(int target){return new InstantAction(()-> targetAngle = target);
-        }
+
+        public Action turretGo() { return new turretAction(); }
+        public Action changeAngle(int target) { return new InstantAction(() -> targetAngle = target); }
     }
 
     public class sensors implements Action{

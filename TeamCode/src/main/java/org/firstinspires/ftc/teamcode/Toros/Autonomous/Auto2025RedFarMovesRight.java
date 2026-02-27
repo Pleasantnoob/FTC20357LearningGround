@@ -105,9 +105,13 @@ public class Auto2025RedFarMovesRight extends LinearOpMode {
 
 
     IMU imu;
-    public class Turret{
-        public Turret(HardwareMap hardwareMap){
-            turretMotor = hardwareMap.get(DcMotorEx.class,"turret");
+    /**
+     * Turret for this auto. Uses 180 in formulas instead of 360 (half-scale angle).
+     * If turret position seems wrong vs other autos, verify whether 180 or 360 is correct for your gearbox.
+     */
+    public class Turret {
+        public Turret(HardwareMap hardwareMap) {
+            turretMotor = hardwareMap.get(DcMotorEx.class, "turret");
             turretMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
             turretMotor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
             controller = new PIDController(p2, i2, d2);
@@ -116,32 +120,30 @@ public class Auto2025RedFarMovesRight extends LinearOpMode {
                     RevHubOrientationOnRobot.LogoFacingDirection.UP,
                     RevHubOrientationOnRobot.UsbFacingDirection.LEFT
             ));
-
             imu.initialize(parameters);
-
         }
-        public class turretAction implements Action{
 
+        public class turretAction implements Action {
             private boolean init = false;
+
             @Override
             public boolean run(@NonNull TelemetryPacket telemetryPacket) {
-                if(!init){
-                    controller.setPID(p2,i2,d2);
+                if (!init) {
+                    controller.setPID(p2, i2, d2);
                     init = true;
                 }
                 double botHeading = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES);
-                double Currentangle = (turretMotor.getCurrentPosition()/384.5)*180*(2.0/5.0);
-                double ticks = (384.5 * targetAngle + botHeading) / 180 * (5.0 / 2.0);;
+                double Currentangle = (turretMotor.getCurrentPosition() / 384.5) * 180 * (2.0 / 5.0);
+                double ticks = (384.5 * (targetAngle + botHeading)) / 180 * (5.0 / 2.0);
                 double motorPosition = turretMotor.getCurrentPosition();
                 double pid = controller.calculate(motorPosition, ticks);
-                double power = pid;
-                turretMotor.setPower(power);
+                turretMotor.setPower(pid);
                 return true;
             }
         }
-        public Action turretGo(){return new turretAction();}
-        public Action changeAngle(int target){return new InstantAction(()-> targetAngle = target);
-        }
+
+        public Action turretGo() { return new turretAction(); }
+        public Action changeAngle(int target) { return new InstantAction(() -> targetAngle = target); }
     }
 
 
