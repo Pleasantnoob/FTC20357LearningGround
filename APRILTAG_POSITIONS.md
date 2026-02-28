@@ -26,8 +26,8 @@ Source: [FTC Field Coordinate System](https://ftc-docs.firstinspires.org/en/late
 
 In `CameraRelocalization.java` we use **one tag** for now: **blue goal tag** (ID 20).
 
-- **BLUE_GOAL_TAG_X = 60**, **BLUE_GOAL_TAG_Y = 72** (inches).
-- That places the tag on the **right** side of the blue backdrop (positive X), at the far wall (Y = 72).
+- **BLUE_GOAL_TAG_X = -70**, **BLUE_GOAL_TAG_Y = -64** (inches) so blue goal is in the **(-,-) quadrant**, matching `MainDrive` blue goal.
+- If your convention has blue goal in (+ , +) (official “+Y toward blue” frame), use positive values (e.g. 60, 72). Tune on Dashboard.
 
 If your Field Setup Guide or game manual gives different coordinates for tag 20 (or your chosen blue goal tag), update **BLUE_GOAL_TAG_X** and **BLUE_GOAL_TAG_Y** in `CameraRelocalization.java` (or on FTC Dashboard, since they are `@Config`).
 

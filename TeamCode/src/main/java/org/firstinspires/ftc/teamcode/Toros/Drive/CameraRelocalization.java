@@ -26,13 +26,14 @@ public class CameraRelocalization {
     public static int BLUE_GOAL_TAG_ID = 20;
 
     /**
-     * Blue goal tag field position (inches). FTC frame: origin at center of mat, +X = right from red wall, +Y = away from red wall.
+     * Blue goal tag field position (inches). Must match your field frame: blue in (-,-) quadrant uses negative X,Y (e.g. -70, -64).
+     * Origin at center; +X = right from red wall, +Y = away from red wall. Tune on Dashboard to match MainDrive goal.
      */
-    public static double BLUE_GOAL_TAG_X = 60.0;
-    public static double BLUE_GOAL_TAG_Y = 72.0;
+    public static double BLUE_GOAL_TAG_X = -70.0;
+    public static double BLUE_GOAL_TAG_Y = -64.0;
 
-    /** Camera mounting: inches forward and right of robot center. Applied so pose is robot center, not camera lens. */
-    public static double CAMERA_FORWARD_OFFSET = 0.0;
+    /** Camera mounting: inches forward and right of robot center (when turret aligned with robot heading). Applied so pose is robot center, not camera lens. */
+    public static double CAMERA_FORWARD_OFFSET = 6.0;
     public static double CAMERA_RIGHT_OFFSET = 0.0;
 
     /** Optional small offset (inches) for final tune to match Pinpoint. */

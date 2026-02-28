@@ -87,12 +87,15 @@ public class IntakeV2 {
         heading = pinpoint.getHeading();
                 //targetVel = -1* calcLaunch(0);
         //double ff = Math.cos(Math.toRadians(targetVel /ticks_in_degrees)) * f1;
-            if (gamepad2.left_bumper)
-            {
+            if (gamepad2.left_bumper) {
                 targetVel = -1480;
                 hood.setPosition(0.8);
-            }
-            else {
+            } else if (useManualLauncherParams) {
+                // Dashboard-tunable for regression: set manualHoodAngleDeg and manualTargetVel, note dist_for_shot_in when shot is good
+                double hoodValue = minServo + ((60.0 - manualHoodAngleDeg) / 20.0) * (maxServo - minServo);
+                hood.setPosition(hoodValue);
+                targetVel = (int) manualTargetVel;
+            } else {
                 updateHoodAndFlywheelFromOdometry();
             }
         if (gamepad1.b) {
@@ -167,11 +170,7 @@ public class IntakeV2 {
             gamepad1.rumble(1500);
         }
 
-
-        setHood(hoodAngle);
-
-
-
+        // Hood is set only in runLauncher() (manual or auto from distance). Do not overwrite here or it jitters.
         }
 
     public void transfer(){
@@ -208,6 +207,13 @@ public class IntakeV2 {
     public static double maxAngle = 50;
     public static double minServo = 0.0;
     public static double maxServo = 1.0;
+
+    /** Manual launcher tuning for regression: use these instead of auto hood/vel from distance. Set true to tune on Dashboard. */
+    public static boolean useManualLauncherParams = true;
+    /** Hood angle (deg). 60 = steep, 40 = flat. Same scale as auto (60° = minServo, 40° = maxServo). */
+    public static double manualHoodAngleDeg = 50.0;
+    /** Flywheel target velocity (encoder ticks/s, negative = launch direction). Tune and record with dist_for_shot_in for regression. */
+    public static double manualTargetVel = -1600.0;
 
 
     LUT<Double, Double> speeds = new LUT<Double, Double>()

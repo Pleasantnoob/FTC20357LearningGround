@@ -7,6 +7,7 @@ import com.acmerobotics.dashboard.config.Config;
 import com.acmerobotics.dashboard.telemetry.MultipleTelemetry;
 import com.acmerobotics.dashboard.telemetry.TelemetryPacket;
 import com.acmerobotics.roadrunner.Pose2d;
+import com.acmerobotics.roadrunner.PoseVelocity2d;
 import com.acmerobotics.roadrunner.Vector2d;
 import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
@@ -69,6 +70,10 @@ public class MainDrive extends LinearOpMode {
     /** If turret mechanical 0° is not aligned with robot +X, add offset here (e.g. 90 or -90). Tune on Dashboard. */
     public static double turretAngleOffsetDeg = 0.0;
 
+    /** Velocity compensation: when true, turret aims at (goal - velocity * timeOfFlight). Off for now while tuning launcher. */
+    public static boolean turretVelocityCompensation = false;
+    public static double turretVelocityCompGain = 1.0;
+
     public AprilTagProcessor aprilTag;
     public String[] motif = new String[3];
     public VisionPortal visionPortal;
@@ -86,10 +91,13 @@ public class MainDrive extends LinearOpMode {
     /** Field angle (deg) for turret when !lockedOn: angleToGoal (aim) or 0 / 180 from dpad. [0, 360). */
     private double fieldHoldAngle = 0;
 
-    /** Distance to goal (inches); set each loop from odometry pose. */
+    /** Distance to goal (inches); set each loop from odometry pose. When goal tag (20 or 24) is seen, prefer camera. */
     public static double distance = 0;
     public static double distanceX = 0;
     public static double distanceY = 0;
+    /** Camera range to goal tag in inches (ftcPose.range is meters). Set when tag 20 or 24 seen; NaN otherwise. Same IDs as lock-on. */
+    public static double cameraDistanceInches = Double.NaN;
+    private static final double M_TO_IN = 39.37007874;
     MecanumDrive mecanumDrive;
 
     /** Camera-derived pose for Dashboard only; null when no tag 20/24 seen. */
@@ -166,7 +174,7 @@ public class MainDrive extends LinearOpMode {
         try {
         while (opModeIsActive()) {
             // --- 1. Odometry: update first so pose is valid every loop from the start ---
-            mecanumDrive.updatePoseEstimate();
+            PoseVelocity2d driveVel = mecanumDrive.updatePoseEstimate();
             Pose2d pose = mecanumDrive.localizer.getPose();
             distanceX = pose.position.x - goalX;
             distanceY = pose.position.y - goalY;
@@ -176,10 +184,24 @@ public class MainDrive extends LinearOpMode {
             poseHistory.add(pose);
             while (poseHistory.size() > 200) poseHistory.removeFirst();
 
-            // --- 2. Turret: odometry aiming at goal. Field angles [0, 360); 0° = toward +Y (goals), 180° = audience. ---
+            // --- 2. Turret: odometry aiming at goal (with optional velocity compensation). Field angles [0, 360). ---
             turret.botHeading = Turret.wrapDeg360(Math.toDegrees(pose.heading.toDouble()));
-            // atan2(dy,dx) in same frame as RR: 0° = +X, 90° = +Y, CCW positive. No -90 shift (was double-rotating vs heading).
-            double angleToGoalRad = Math.atan2(goalY - pose.position.y, goalX - pose.position.x);
+            // Velocity comp: aim at (goal - vel*t) so when the note lands we've moved into line. All in field frame (in, in/s, s).
+            Vector2d robotVel = driveVel.linearVel;  // robot frame: x=forward, y=left (RR convention)
+            double h = pose.heading.toDouble();
+            double c = Math.cos(h), s = Math.sin(h);
+            double worldVx = c * robotVel.x - s * robotVel.y;  // field frame in/s
+            double worldVy = s * robotVel.x + c * robotVel.y;
+            double distForShotVel = getDistance();
+            double[] hoodSpeedVel = ShotPhysics.hoodAndSpeedFromDistanceInches(distForShotVel);
+            double timeOfFlightS = ShotPhysics.timeInAir(hoodSpeedVel[1], Math.toRadians(hoodSpeedVel[0]));
+            double aimGoalX = goalX;
+            double aimGoalY = goalY;
+            if (turretVelocityCompensation && turretVelocityCompGain > 0) {
+                aimGoalX = goalX - turretVelocityCompGain * (worldVx * timeOfFlightS);
+                aimGoalY = goalY - turretVelocityCompGain * (worldVy * timeOfFlightS);
+            }
+            double angleToGoalRad = Math.atan2(aimGoalY - pose.position.y, aimGoalX - pose.position.x);
             double angleToGoalDeg = Turret.wrapDeg360(Math.toDegrees(angleToGoalRad) + turretAngleOffsetDeg);
             if (!lockedOn) {
                 if (gamepad2.dpad_up) fieldHoldAngle = 0;
@@ -206,15 +228,18 @@ public class MainDrive extends LinearOpMode {
             intake.runIntake();
             intake.transfer();
 
-            // --- 4. Camera relocalization: pose from AprilTag (15° tilt, odometry heading); display only ---
+            // --- 4. Camera relocalization + distance (same tag IDs as lock-on: 20, 24). ftcPose.range = meters ---
             cameraPose = null;
+            cameraDistanceInches = Double.NaN;
             double headingRad = pose.heading.toDouble();
             for (AprilTagDetection d : aprilTag.getDetections()) {
                 if (d.metadata == null) continue;
+                if (d.id == 20 || d.id == 24) {
+                    cameraDistanceInches = d.ftcPose.range * M_TO_IN;
+                }
                 Vector2d tagPos = CameraRelocalization.getTagFieldPosition(d.id);
                 if (tagPos != null && d.id == CameraRelocalization.BLUE_GOAL_TAG_ID) {
                     cameraPose = CameraRelocalization.robotPoseFromTag(d, tagPos.x, tagPos.y, headingRad);
-                    break;
                 }
             }
 
@@ -223,12 +248,15 @@ public class MainDrive extends LinearOpMode {
             Drawing.drawPoseHistory(packet.fieldOverlay(), poseHistory, "#3F51B5"); // path (blue)
             Drawing.drawRobot(packet.fieldOverlay(), pose, 1, "#3F51B5");             // odometry robot (blue)
             Drawing.drawGoal(packet.fieldOverlay(), goalX, goalY, "#4CAF50");         // goal (green)
-            Drawing.drawRobotToGoalLine(packet.fieldOverlay(), pose, goalX, goalY, "#FFC107"); // aim line (yellow)
+            Drawing.drawRobotToGoalLine(packet.fieldOverlay(), pose, aimGoalX, aimGoalY, "#FFC107"); // aim line = where turret points (yellow)
             if (cameraPose != null) Drawing.drawCameraPose(packet.fieldOverlay(), cameraPose, "#FF5722"); // camera reloc (orange, inches)
             double distToGoalIn = Math.hypot(pose.position.x - goalX, pose.position.y - goalY);
+            double distForShot = getDistance();
             double hoodDeg = Math.max(40, Math.min(60, 60 - intake.getHood() * 20));
-            double[] shot = ShotPhysics.speedAndTimeInAir(distToGoalIn, hoodDeg);
+            double[] shot = ShotPhysics.speedAndTimeInAir(distForShot, hoodDeg);
             packet.put("dist_to_goal_in", distToGoalIn);
+            packet.put("dist_for_shot_in", distForShot);
+            packet.put("dist_src", Double.isFinite(cameraDistanceInches) && cameraDistanceInches >= 12 && cameraDistanceInches <= 200 ? "camera" : "odom");
             packet.put("speed_needed_mps", shot[0]);
             packet.put("time_in_air_s", shot[1]);
             packet.put("odom_x", pose.position.x);
@@ -239,6 +267,15 @@ public class MainDrive extends LinearOpMode {
             packet.put("turret_field_deg", turret.getTurretAngleField());
             packet.put("turret_robot_deg", turret.getTurretAngleRobot());
             packet.put("field_hold_deg", fieldHoldAngle);
+            packet.put("vel_comp_on", turretVelocityCompensation && turretVelocityCompGain > 0);
+            packet.put("launcher_mode", IntakeV2.useManualLauncherParams ? "manual (Dashboard)" : "auto (from distance)");
+            packet.put("manual_hood_deg", IntakeV2.manualHoodAngleDeg);
+            packet.put("manual_target_vel", IntakeV2.manualTargetVel);
+            packet.put("aim_goal_x", aimGoalX);
+            packet.put("aim_goal_y", aimGoalY);
+            packet.put("world_vel_x_in_s", worldVx);
+            packet.put("world_vel_y_in_s", worldVy);
+            packet.put("time_of_flight_s", timeOfFlightS);
             if (cameraPose != null) {
                 packet.put("camera_x", cameraPose.position.x);
                 packet.put("camera_y", cameraPose.position.y);
@@ -466,8 +503,13 @@ public class MainDrive extends LinearOpMode {
     return motif;
     }
 
-    public static double getDistance(){
-        return distance = Math.sqrt(Math.pow(distanceX,2)+Math.pow(distanceY,2));
+    /** Distance to goal in inches. Prefers camera (tags 20/24) when visible and in range; else odometry. */
+    public static double getDistance() {
+        distance = Math.sqrt(distanceX * distanceX + distanceY * distanceY);
+        if (Double.isFinite(cameraDistanceInches) && cameraDistanceInches >= 12 && cameraDistanceInches <= 200) {
+            return cameraDistanceInches;
+        }
+        return distance;
     }
 
 
