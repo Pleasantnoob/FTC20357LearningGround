@@ -99,16 +99,10 @@ public class Turret {
         controller = new PIDController(p1, i1, d1);
         controller.setPID(p1, i1, d1);
 
-        // Pinpoint is used here only for IMU heading (degrees). Encoder resolution/offsets must match your odometry pod setup.
+        // Pinpoint: use shared driver for IMU heading only. Do not configure or reset — PinpointLocalizer does that once (avoids heading drift).
         driver = hardwareMap.get(GoBildaPinpointDriver.class, "pinpoint");
-        double inPerTick = 0.02285196738095238;
-        double mmPerTick = inPerTick * 25.4;
-        driver.setEncoderResolution(1 / mmPerTick, DistanceUnit.MM);
-        driver.setOffsets(PARAMS.parYTicks, PARAMS.perpXTicks, DistanceUnit.MM);
         initialParDirection = GoBildaPinpointDriver.EncoderDirection.FORWARD;
         initialPerpDirection = GoBildaPinpointDriver.EncoderDirection.FORWARD;
-        driver.setEncoderDirections(initialParDirection, initialPerpDirection);
-        driver.resetPosAndIMU();
     }
 
     /**

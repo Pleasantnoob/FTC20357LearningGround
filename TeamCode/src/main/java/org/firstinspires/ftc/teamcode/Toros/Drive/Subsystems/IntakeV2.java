@@ -90,10 +90,12 @@ public class IntakeV2 {
             if (gamepad2.left_bumper) {
                 targetVel = -1480;
                 hood.setPosition(0.8);
+                lastHoodValue = -1; // so next odometry update writes
             } else if (useManualLauncherParams) {
                 // Dashboard-tunable for regression: set manualHoodAngleDeg and manualTargetVel, note dist_for_shot_in when shot is good
-                double hoodValue = minServo + ((60.0 - manualHoodAngleDeg) / 20.0) * (maxServo - minServo);
+                double hoodValue = minServo + ((70.0 - manualHoodAngleDeg) / 30.0) * (maxServo - minServo);
                 hood.setPosition(hoodValue);
+                lastHoodValue = -1; // so next odometry update writes when switching back
                 targetVel = (int) manualTargetVel;
             } else {
                 updateHoodAndFlywheelFromOdometry();
@@ -204,14 +206,14 @@ public class IntakeV2 {
     public static double h = 0.69;
     public static double flywheelRadius = 0.048;
     public static double minAngle = 40;
-    public static double maxAngle = 50;
+    public static double maxAngle = 70;
     public static double minServo = 0.0;
     public static double maxServo = 1.0;
 
     /** Manual launcher tuning for regression: use these instead of auto hood/vel from distance. Set true to tune on Dashboard. */
     public static boolean useManualLauncherParams = true;
-    /** Hood angle (deg). 60 = steep, 40 = flat. Same scale as auto (60° = minServo, 40° = maxServo). */
-    public static double manualHoodAngleDeg = 50.0;
+    /** Hood angle (deg). 70 = steep, 40 = flat. Same scale as auto (70° = minServo, 40° = maxServo). */
+    public static double manualHoodAngleDeg = 55.0;
     /** Flywheel target velocity (encoder ticks/s, negative = launch direction). Tune and record with dist_for_shot_in for regression. */
     public static double manualTargetVel = -1600.0;
 
@@ -264,9 +266,13 @@ public class IntakeV2 {
         return heading;
     }
 
+    /** Last hood servo position written; only update when change exceeds this to reduce jitter. */
+    private double lastHoodValue = -1;
+    private static final double HOOD_DEADBAND = 0.015;
+
     /**
      * Uses odometry distance to goal (MainDrive.getDistance(), inches) to set hood angle and flywheel target velocity.
-     * Same physics as ShotPhysics / calcLaunch2: hood from distance, speed from speedForShot, then omega -> ticks/s.
+     * Hood range 40–70°. Only updates hood when new value differs by more than deadband to reduce jitter.
      */
     public void updateHoodAndFlywheelFromOdometry() {
         double distanceInches = MainDrive.getDistance();
@@ -274,18 +280,21 @@ public class IntakeV2 {
         double hoodAngleDeg = hoodAndSpeed[0];
         double speedMPS = hoodAndSpeed[1];
 
-        // Servo mapping: same as calcLaunch2 (60° = minServo, 40° = maxServo)
-        double hoodValue = minServo + ((60 - hoodAngleDeg) / 20.0) * (maxServo - minServo);
-        hood.setPosition(hoodValue);
+        // Servo mapping: 70° = minServo, 40° = maxServo (range 40–70)
+        double hoodValue = minServo + ((70.0 - hoodAngleDeg) / 30.0) * (maxServo - minServo);
+        if (lastHoodValue < 0 || Math.abs(hoodValue - lastHoodValue) > HOOD_DEADBAND) {
+            hood.setPosition(hoodValue);
+            lastHoodValue = hoodValue;
+        }
 
-        // Speed (m/s) -> angular vel (rad/s) -> ticks/s, with same tuning as calcLaunch2
+        // Speed (m/s) -> angular vel (rad/s) -> ticks/s
         double omega = speedMPS / flywheelRadius;
         ticksPerSecond = omega * 28.0 / (2.0 * Math.PI);
         ticksPerSecond *= k;
         targetVel = (int) ticksPerSecond;
     }
 
-    /** AprilTag-based launch calc (kept for reference/fallback). */
+    /** Unused: do not call. Kept only for reference. Hood is set by updateHoodAndFlywheelFromOdometry() or manual params. */
     public double calcLaunch1() {
         double distance = lastDistance;
         boolean tagSeen = false;
@@ -309,7 +318,8 @@ public class IntakeV2 {
 
 
 
-    public double calcLaunch2() { // to make air sort: add parameter?? if slow then: hood angle = high, else: calc hood angle
+    /** Unused: do not call. Hood is set by updateHoodAndFlywheelFromOdometry() or manual params only. */
+    public double calcLaunch2() {
 
         //vars
         double distance = lastDistance;

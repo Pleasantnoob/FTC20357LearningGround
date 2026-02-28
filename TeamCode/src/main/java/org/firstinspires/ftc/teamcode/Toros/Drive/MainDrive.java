@@ -20,6 +20,8 @@ import org.firstinspires.ftc.robotcore.external.hardware.camera.BuiltinCameraDir
 import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
 import org.firstinspires.ftc.teamcode.RR.Drawing;
 import org.firstinspires.ftc.teamcode.RR.MecanumDrive;
+import org.firstinspires.ftc.teamcode.RR.PinpointLocalizer;
+import org.firstinspires.ftc.teamcode.RR.PoseBridge;
 import org.firstinspires.ftc.teamcode.Toros.Drive.CameraRelocalization;
 import org.firstinspires.ftc.teamcode.Toros.Drive.ShotPhysics;
 import org.firstinspires.ftc.teamcode.Toros.Drive.Subsystems.DriveTrain;
@@ -128,12 +130,25 @@ public class MainDrive extends LinearOpMode {
         initAprilTag();
         drivetrain = new DriveTrain(hardwareMap, gamepad1);
         led = hardwareMap.get(Servo.class, "LED");
-        intake = new IntakeV2(hardwareMap, gamepad1, gamepad2, aprilTag);
-        turret = new Turret(hardwareMap, gamepad2);
         applyAllianceMode();
-        Pose2d initialPose = new Pose2d(startX, startY, Math.toRadians(startHeadingDeg));
+        // If Auto just ran and saved its end pose, use it so Teleop starts from that position/heading.
+        Pose2d initialPose;
+        if (PoseBridge.hasPose()) {
+            initialPose = PoseBridge.getPose();
+            PoseBridge.clear();
+            startX = initialPose.position.x;
+            startY = initialPose.position.y;
+            startHeadingDeg = Math.toDegrees(initialPose.heading.toDouble());
+        } else {
+            initialPose = new Pose2d(startX, startY, Math.toRadians(startHeadingDeg));
+        }
+        // Create MecanumDrive first so PinpointLocalizer is the only component that configures
+        // the Pinpoint (encoder resolution, offsets, directions, resetPosAndIMU). This avoids
+        // multiple inits overwriting each other and prevents heading drift from wrong config.
         mecanumDrive = new MecanumDrive(hardwareMap, initialPose);
         mecanumDrive.localizer.setPose(initialPose);
+        intake = new IntakeV2(hardwareMap, gamepad1, gamepad2, aprilTag);
+        turret = new Turret(hardwareMap, gamepad2);
 
         // During init: Dpad Left = Blue, Dpad Right = Red (start/goal and pose update)
         while (!isStarted() && opModeIsActive()) {
@@ -183,6 +198,13 @@ public class MainDrive extends LinearOpMode {
             // Pose history for Dashboard path (localization viz)
             poseHistory.add(pose);
             while (poseHistory.size() > 200) poseHistory.removeFirst();
+
+            // Re-zero Pinpoint IMU when Start is pressed (robot should be stationary). Reduces heading drift over time.
+            if (gamepad1.start && mecanumDrive.localizer instanceof PinpointLocalizer) {
+                PinpointLocalizer pl = (PinpointLocalizer) mecanumDrive.localizer;
+                pl.driver.resetPosAndIMU();
+                mecanumDrive.localizer.setPose(new Pose2d(pose.position.x, pose.position.y, 0));
+            }
 
             // --- 2. Turret: odometry aiming at goal (with optional velocity compensation). Field angles [0, 360). ---
             turret.botHeading = Turret.wrapDeg360(Math.toDegrees(pose.heading.toDouble()));
@@ -252,7 +274,7 @@ public class MainDrive extends LinearOpMode {
             if (cameraPose != null) Drawing.drawCameraPose(packet.fieldOverlay(), cameraPose, "#FF5722"); // camera reloc (orange, inches)
             double distToGoalIn = Math.hypot(pose.position.x - goalX, pose.position.y - goalY);
             double distForShot = getDistance();
-            double hoodDeg = Math.max(40, Math.min(60, 60 - intake.getHood() * 20));
+            double hoodDeg = Math.max(40, Math.min(70, 70 - intake.getHood() * 30));
             double[] shot = ShotPhysics.speedAndTimeInAir(distForShot, hoodDeg);
             packet.put("dist_to_goal_in", distToGoalIn);
             packet.put("dist_for_shot_in", distForShot);

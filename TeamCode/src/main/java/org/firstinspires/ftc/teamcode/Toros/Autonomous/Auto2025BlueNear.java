@@ -28,6 +28,7 @@ import com.qualcomm.robotcore.util.ElapsedTime;
 
 import org.firstinspires.ftc.robotcore.external.hardware.camera.BuiltinCameraDirection;
 import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
+import org.firstinspires.ftc.teamcode.RR.PoseBridge;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.teamcode.RR.MecanumDrive;
 import org.firstinspires.ftc.vision.VisionPortal;
@@ -504,6 +505,9 @@ public class Auto2025BlueNear extends LinearOpMode {
                             )
                     )
             );
+
+            // Stream end pose to Teleop so MainDrive can start from this position/heading.
+            PoseBridge.save(drive.localizer.getPose());
 
             while (opModeIsActive()) {
                 telemetry.addData("motif",motif.get(1));

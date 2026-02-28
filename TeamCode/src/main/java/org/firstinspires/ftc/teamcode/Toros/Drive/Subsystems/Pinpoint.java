@@ -20,20 +20,12 @@ public class Pinpoint{
 
     public double inPerTick = 0.00194723378259707 ;
 
+    /** Use after PinpointLocalizer has been constructed so the Pinpoint is configured once (avoids drift from multiple inits). */
     public Pinpoint(HardwareMap hardwareMap){
         driver = hardwareMap.get(GoBildaPinpointDriver.class, "pinpoint");
-
-        double mmPerTick = inPerTick * 25.4;
-        driver.setEncoderResolution(1 / mmPerTick, DistanceUnit.MM);
-        driver.setOffsets(mmPerTick * PARAMS.parYTicks, mmPerTick * PARAMS.perpXTicks, DistanceUnit.MM);
-
-        // TODO: reverse encoder directions if needed
+        // Do not configure or reset here — PinpointLocalizer is the single source of config and reset.
         initialParDirection = GoBildaPinpointDriver.EncoderDirection.REVERSED;
         initialPerpDirection = GoBildaPinpointDriver.EncoderDirection.FORWARD;
-
-        driver.setEncoderDirections(initialParDirection, initialPerpDirection);
-
-        driver.resetPosAndIMU();
     }
     public double getHeading(){
         return driver.getHeading(AngleUnit.RADIANS);
