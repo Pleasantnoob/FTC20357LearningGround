@@ -219,10 +219,16 @@ public class MainDrive extends LinearOpMode {
             double worldVy = s * robotVel.x + c * robotVel.y;
             double distForShotVel = getDistance();
             double[] hoodSpeedVel = ShotPhysics.hoodAndSpeedFromDistanceInches(distForShotVel);
-            double timeOfFlightS = ShotPhysics.timeInAir(hoodSpeedVel[1], Math.toRadians(hoodSpeedVel[0]));
+            // Use actual hood and flywheel for time-of-flight so velocity comp matches the real shot (manual vs auto).
+            double hoodDegForVelComp = IntakeV2.manualMode ? IntakeV2.manualHoodAngleDeg : hoodSpeedVel[0];
+            double speedMPSForVelComp = IntakeV2.manualMode
+                ? IntakeV2.launchSpeedMPSFromTicksPerSec(IntakeV2.manualTargetVel)
+                : hoodSpeedVel[1];
+            double timeOfFlightS = ShotPhysics.timeInAir(speedMPSForVelComp, Math.toRadians(hoodDegForVelComp));
             double aimGoalX = goalX;
             double aimGoalY = goalY;
-            if (turretVelocityCompensation && turretVelocityCompGain > 0) {
+            // Aim = goal - gain*(vel*T). Use negative gain to lead (aim ahead) so note lands on goal when moving.
+            if (turretVelocityCompensation && turretVelocityCompGain != 0) {
                 aimGoalX = goalX - turretVelocityCompGain * (worldVx * timeOfFlightS);
                 aimGoalY = goalY - turretVelocityCompGain * (worldVy * timeOfFlightS);
             }
@@ -295,10 +301,17 @@ public class MainDrive extends LinearOpMode {
             packet.put("turret_field_deg", turret.getTurretAngleField());
             packet.put("turret_robot_deg", turret.getTurretAngleRobot());
             packet.put("field_hold_deg", fieldHoldAngle);
-            packet.put("vel_comp_on", turretVelocityCompensation && turretVelocityCompGain > 0);
-            packet.put("launcher_mode", IntakeV2.useManualLauncherParams ? "manual (Dashboard)" : "auto (from distance)");
+            packet.put("vel_comp_on", turretVelocityCompensation && turretVelocityCompGain != 0);
+            packet.put("launcher_mode", IntakeV2.manualMode ? "manual (Dashboard)" : "auto (from distance)");
             packet.put("manual_hood_deg", IntakeV2.manualHoodAngleDeg);
             packet.put("manual_target_vel", IntakeV2.manualTargetVel);
+            packet.put("flywheel_p", IntakeV2.p1);
+            packet.put("flywheel_i", IntakeV2.i1);
+            packet.put("flywheel_d", IntakeV2.d1);
+            packet.put("flywheel_kS", IntakeV2.kS);
+            packet.put("flywheel_kV", IntakeV2.kV);
+            packet.put("flywheel_kA", IntakeV2.kA);
+            packet.put("flywheel_accel", IntakeV2.accel);
             packet.put("aim_goal_x", aimGoalX);
             packet.put("aim_goal_y", aimGoalY);
             packet.put("world_vel_x_in_s", worldVx);

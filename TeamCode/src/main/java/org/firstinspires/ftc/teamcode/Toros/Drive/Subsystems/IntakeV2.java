@@ -41,15 +41,19 @@ public class IntakeV2 {
     Gamepad gamepad1;
     private PIDController controller;
 
-    public static double p1 = 0.0045, i1 = 0, d1 = 0;
-    public static double kS = 0.001,kV = 0.00055,kA = 0;
+    /** Flywheel PID — tune in FTC Dashboard (IntakeV2) while running MainDrive. */
+    public static double p1 = 0.006, i1 = 0.005, d1 = 0.0001;
+    /** Flywheel feedforward — tune in FTC Dashboard (IntakeV2). kS=static, kV=velocity, kA=accel gain (often 0). */
+    public static double kS = 0, kV = 0.00047, kA = 0.005;
+    /** Target acceleration (ticks/s²) passed to feedforward. FF output uses kS + kV*vel + kA*accel. */
     public static double accel = -30;
 
-    public static double f1 = 0;
-    /** Effective target (used by PID). Set from manualTargetVel when useManualLauncherParams, or from auto/left_bumper. Not for Dashboard—edit manualTargetVel. */
+    public static double f1 = 0;  // unused; FF uses kS, kV, kA
+    /** Effective target (used by PID). Set from manualTargetVel when manualMode, or from auto/left_bumper. Not for Dashboard—edit manualTargetVel. */
     private static double targetVel = -1800;
     private Gamepad gamepad2;
-    public int threshold = 30;
+    /** Grace band (ticks/s): can shoot when |launcherVel - targetVel| <= SHOOT_VEL_TOLERANCE (e.g. ±20). */
+    public static int SHOOT_VEL_TOLERANCE = 20;
 
     public double ticksPerSecond = 1500;
 
@@ -92,8 +96,8 @@ public class IntakeV2 {
                 targetVel = -1480;
                 hood.setPosition(0.8);
                 lastHoodValue = -1; // so next odometry update writes
-            } else if (useManualLauncherParams) {
-                // Dashboard-tunable for regression: set manualHoodAngleDeg and manualTargetVel, note dist_for_shot_in when shot is good
+            } else if (manualMode) {
+                // Dashboard-tunable: set manualHoodAngleDeg and manualTargetVel (toggle manualMode in Config to use these)
                 double hoodValue = minServo + ((70.0 - manualHoodAngleDeg) / 30.0) * (maxServo - minServo);
                 hood.setPosition(hoodValue);
                 lastHoodValue = -1; // so next odometry update writes when switching back
@@ -113,13 +117,13 @@ public class IntakeV2 {
         }
 
 
-        //launch normal
-            //Laucnhes the ball with PID
+        //launch normal — PID(F) tunable live via FTC Dashboard (IntakeV2 section when running MainDrive)
             if (gamepad2.left_trigger > 0.1) {
+                controller.setPID(p1, i1, d1); // apply Dashboard tuning each loop
                 double launchVel = launch.getVelocity();
-                SimpleMotorFeedforward feedforward = new SimpleMotorFeedforward(kS,kV,kA);
+                SimpleMotorFeedforward feedforward = new SimpleMotorFeedforward(kS, kV, kA);
                 double pid = controller.calculate(launchVel, targetVel);
-                double ff = feedforward.calculate(targetVel,accel);
+                double ff = feedforward.calculate(targetVel, accel);
                 double power = pid + ff;
                 launch.setPower(power);
             }
@@ -128,7 +132,7 @@ public class IntakeV2 {
             }
 
             if (gamepad2.right_trigger > 0.1) {
-                if (Math.abs(launch.getVelocity() - targetVel) <= threshold) {
+                if (Math.abs(launch.getVelocity() - targetVel) <= SHOOT_VEL_TOLERANCE) {
                     // Feed to launcher: both transfer and intake at full power (direction for feed)
                     trans.setPower(-1.0);
                     intakeMotor.setPower(-1.0);
@@ -201,19 +205,25 @@ public class IntakeV2 {
     public double lastDistance = 1;
     public static double h = 0.69;
     public static double flywheelRadius = 0.048;
+    /** Encoder ticks per flywheel revolution (for ticks/s → launch speed m/s). Tune if velocity comp is off in manual mode. */
+    public static double TICKS_PER_REV = 28.0;
     public static double minAngle = 40;
     public static double maxAngle = 70;
     public static double minServo = 0.0;
     public static double maxServo = 1.0;
 
-    // ---------- Dashboard launcher tuning (IntakeV2 section). These are the only ones that affect launcher when useManualLauncherParams is true. ----------
-    /** Use manual hood + velocity below instead of regression from distance. false = use regression by default. */
-    public static boolean useManualLauncherParams = false;
+    // ---------- Dashboard launcher tuning (IntakeV2). Toggle manualMode and tune manualHoodAngleDeg / manualTargetVel. ----------
+    /** true = use manual hood + velocity below; false = use regression from distance. Toggle in FTC Dashboard Config (IntakeV2). */
+    public static boolean manualMode = false;
     /** Hood angle in degrees. 70 = steep (close), 40 = flat (far). Edit this on Dashboard to change hood. */
     public static double manualHoodAngleDeg = 55.0;
     /** Flywheel target velocity (encoder ticks/s). Negative = launch direction. Edit this on Dashboard to change shot speed; this is the value the PID uses. */
     public static double manualTargetVel = -1600.0;
 
+    /** Convert flywheel ticks/s (magnitude) to approximate launch speed in m/s. Used for velocity-comp time-of-flight in manual mode. */
+    public static double launchSpeedMPSFromTicksPerSec(double ticksPerSec) {
+        return Math.abs(ticksPerSec) * 2 * Math.PI * flywheelRadius / TICKS_PER_REV;
+    }
 
     LUT<Double, Double> speeds = new LUT<Double, Double>()
     {{
