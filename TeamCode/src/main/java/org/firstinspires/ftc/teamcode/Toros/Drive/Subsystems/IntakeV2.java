@@ -24,7 +24,7 @@ import org.firstinspires.ftc.teamcode.Toros.Drive.ShotPhysics;
 import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
 import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 import org.opencv.core.Mat;
-
+ 
 import com.arcrobotics.ftclib.util.LUT;
 import com.sun.tools.javac.Main;
 
@@ -102,6 +102,13 @@ public class IntakeV2 {
                 hood.setPosition(hoodValue);
                 lastHoodValue = -1; // so next odometry update writes when switching back
                 targetVel = (int) manualTargetVel;
+            } else if (airSortEnabled && airSortPresetActive) {
+                double hoodValue = minServo + ((70.0 - airSortHoodDeg) / 30.0) * (maxServo - minServo);
+                if (lastHoodValue < 0 || Math.abs(hoodValue - lastHoodValue) > HOOD_DEADBAND) {
+                    hood.setPosition(hoodValue);
+                    lastHoodValue = hoodValue;
+                }
+                targetVel = (int) airSortTargetVel;
             } else {
                 updateHoodAndFlywheelFromOdometry();
             }
@@ -220,9 +227,86 @@ public class IntakeV2 {
     /** Flywheel target velocity (encoder ticks/s). Negative = launch direction. Edit this on Dashboard to change shot speed; this is the value the PID uses. */
     public static double manualTargetVel = -1600.0;
 
+    /** Max flywheel velocity (ticks/s magnitude) for airsort fast/slow shot limits. */
+    public static final double MAX_FLYWHEEL_TICKS_PER_SEC = 1700.0;
+
     /** Convert flywheel ticks/s (magnitude) to approximate launch speed in m/s. Used for velocity-comp time-of-flight in manual mode. */
     public static double launchSpeedMPSFromTicksPerSec(double ticksPerSec) {
         return Math.abs(ticksPerSec) * 2 * Math.PI * flywheelRadius / TICKS_PER_REV;
+    }
+
+    /** Convert launch speed (m/s) to flywheel ticks/s magnitude. Inverse of launchSpeedMPSFromTicksPerSec. */
+    public static double ticksPerSecFromLaunchSpeedMPS(double vMPS) {
+        if (vMPS <= 0) return 0;
+        return vMPS * TICKS_PER_REV / (2 * Math.PI * flywheelRadius);
+    }
+
+    // ---------- Airsort fast/slow shot preset (min/max time in air, hood 40–70°, flywheel ≤ 1700 ticks/s) ----------
+    /** When false, airsort preset is never used (set true when ready to use airsort). */
+    public static boolean airSortEnabled = false;
+    private boolean airSortPresetActive = false;
+    private double airSortHoodDeg = 55.0;
+    private double airSortTargetVel = -1600.0;
+
+    /** Max hood deviation from regression (deg) so fast/slow don't change hood too much. Both shots stay makeable. */
+    private static final double AIRSORT_HOOD_BAND_DEG = 12.0;
+
+    /**
+     * Set launcher to airsort preset: fast = min time in air, slow = max time in air.
+     * Uses regression as floor (velocity never below regression so shot is makeable); hood clamped to ±AIRSORT_HOOD_BAND_DEG of regression.
+     */
+    public void setAirSortPreset(AirSort.ShotMode mode, double distanceInches) {
+        if (!airSortEnabled) return;
+        distanceInches = Math.max(12.0, Math.min(180.0, distanceInches));
+
+        // Regression (proven makeable at this distance)
+        double x = distanceInches;
+        double regressionHoodDeg = HOOD_A * x * x * x + HOOD_B * x * x + HOOD_C * x + HOOD_D;
+        regressionHoodDeg = Math.max(MIN_HOOD_DEG, Math.min(MAX_HOOD_DEG, regressionHoodDeg));
+        double regressionTargetVel = FLYWHEEL_SLOPE * x + FLYWHEEL_INTERCEPT; // negative
+
+        double vMaxMPS = launchSpeedMPSFromTicksPerSec(MAX_FLYWHEEL_TICKS_PER_SEC);
+        double[] hoodAndSpeed;
+        if (mode == AirSort.ShotMode.FAST_SHOT) {
+            hoodAndSpeed = ShotPhysics.fastShotHoodAndSpeedMPS(distanceInches, vMaxMPS);
+        } else {
+            hoodAndSpeed = ShotPhysics.slowShotHoodAndSpeedMPS(distanceInches, vMaxMPS);
+        }
+        airSortHoodDeg = hoodAndSpeed[0];
+        double speedMPS = hoodAndSpeed[1];
+        double ticksMag = ticksPerSecFromLaunchSpeedMPS(speedMPS);
+        airSortTargetVel = -ticksMag;
+
+        // Velocity floor: never below regression (shot must be makeable)
+        if (airSortTargetVel > regressionTargetVel) airSortTargetVel = regressionTargetVel;
+
+        // Hood band: don't deviate too far from regression (reduces big swings)
+        double hoodMin = Math.max(MIN_HOOD_DEG, regressionHoodDeg - AIRSORT_HOOD_BAND_DEG);
+        double hoodMax = Math.min(MAX_HOOD_DEG, regressionHoodDeg + AIRSORT_HOOD_BAND_DEG);
+        airSortHoodDeg = Math.max(hoodMin, Math.min(hoodMax, airSortHoodDeg));
+
+        // Recompute speed for clamped hood so shot is makeable at this angle
+        double dM = distanceInches * 0.0254;
+        dM = Math.max(0.3, Math.min(3.5, dM));
+        double requiredMPS = ShotPhysics.speedForShot(dM, Math.toRadians(airSortHoodDeg));
+        if (requiredMPS > speedMPS) speedMPS = requiredMPS;
+        speedMPS = Math.min(speedMPS, vMaxMPS);
+        ticksMag = ticksPerSecFromLaunchSpeedMPS(speedMPS);
+        airSortTargetVel = -ticksMag;
+        if (airSortTargetVel > regressionTargetVel) airSortTargetVel = regressionTargetVel;
+
+        airSortPresetActive = true;
+        lastHoodValue = -1;
+    }
+
+    /** Stop using airsort preset; launcher falls back to odometry (or manual/left_bumper). */
+    public void clearAirSortPreset() {
+        airSortPresetActive = false;
+    }
+
+    /** True if launcher is currently driven by setAirSortPreset (fast/slow shot). */
+    public boolean isAirSortPresetActive() {
+        return airSortPresetActive;
     }
 
     LUT<Double, Double> speeds = new LUT<Double, Double>()
@@ -278,28 +362,32 @@ public class IntakeV2 {
     private static final double HOOD_DEADBAND = 0.015;
 
     // Regression from distance (inches) to hood angle and flywheel speed
-    // Hood: y = 157.89707 * x^-0.276756  (degrees)
-    // Flywheel: 853.95141 * 1.00455^x (encoder ticks/s magnitude; launch direction = negative)
-    private static final double HOOD_COEF = 157.89707;
-    private static final double HOOD_EXP = -0.276756;
-    private static final double FLYWHEEL_COEF = 853.95141;
-    private static final double FLYWHEEL_BASE = 1.00455;
+    // Hood: y = -0.0000200129x³ + 0.00741561x² - 0.953361x + 83.35366 (degrees)
+    // Flywheel: y = -4.86091x - 818.80229 (ticks/s; negative = launch direction)
+    private static final double HOOD_A = -0.0000200129;
+    private static final double HOOD_B = 0.00741561;
+    private static final double HOOD_C = -0.953361;
+    private static final double HOOD_D = 83.35366;
+    private static final double FLYWHEEL_SLOPE = -4.86091;
+    private static final double FLYWHEEL_INTERCEPT = -818.80229;
     private static final double MIN_HOOD_DEG = 40.0;
     private static final double MAX_HOOD_DEG = 70.0;
 
     /**
      * Sets hood angle and flywheel target from distance to goal using regression.
-     * Distance from odometry only. Hood: 157.89707 * distance^-0.276756 (clamped 40–70°). Flywheel: -(853.95141 * 1.00455^distance) ticks/s.
+     * Hood: -0.0000200129x³ + 0.00741561x² - 0.953361x + 83.35366 (clamped 40–70°).
+     * Flywheel: -4.86091x - 818.80229 ticks/s.
      */
     public void updateHoodAndFlywheelFromOdometry() {
         double distanceInches = MainDrive.getDistanceFromOdometry();
         distanceInches = Math.max(12.0, Math.min(180.0, distanceInches)); // clamp to valid range
 
-        double hoodAngleDeg = HOOD_COEF * Math.pow(distanceInches, HOOD_EXP);
+        double x = distanceInches;
+        double hoodAngleDeg = HOOD_A * x * x * x + HOOD_B * x * x + HOOD_C * x + HOOD_D;
         hoodAngleDeg = Math.max(MIN_HOOD_DEG, Math.min(MAX_HOOD_DEG, hoodAngleDeg));
 
-        double flywheelMagnitude = FLYWHEEL_COEF * Math.pow(FLYWHEEL_BASE, distanceInches);
-        targetVel = (int) -flywheelMagnitude; // negative = launch direction
+        double flywheelTarget = FLYWHEEL_SLOPE * x + FLYWHEEL_INTERCEPT; // already negative
+        targetVel = (int) flywheelTarget;
 
         double hoodValue = minServo + ((70.0 - hoodAngleDeg) / 30.0) * (maxServo - minServo);
         if (lastHoodValue < 0 || Math.abs(hoodValue - lastHoodValue) > HOOD_DEADBAND) {

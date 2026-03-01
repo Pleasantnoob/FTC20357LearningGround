@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Velocity compensation simulator – goal &amp; virtual goal</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 12px;
+      font-family: system-ui, sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+    }
+    h1 { font-size: 1.1rem; margin-bottom: 8px; }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    label { display: flex; align-items: center; gap: 8px; }
+    input[type="range"] { width: 120px; }
+    .value { font-variant-numeric: tabular-nums; min-width: 48px; }
+    #canvas {
+      display: block;
+      background: #16213e;
+      border: 2px solid #0f3460;
+      border-radius: 8px;
+      cursor: none;
+    }
+    .stats {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      background: rgba(0,0,0,0.7);
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 12px;
+      line-height: 1.6;
+      font-variant-numeric: tabular-nums;
+      pointer-events: none;
+    }
+    .stats .label { color: #aaa; }
+    .stats .hi { color: #4CAF50; }
+    .stats .orange { color: #FF9800; }
+    .wrap { position: relative; display: inline-block; }
+    p.help { margin-top: 12px; font-size: 0.9rem; opacity: 0.85; }
+  </style>
+</head>
+<body>
+  <h1>Velocity compensation: goal &amp; virtual goal</h1>
+  <div class="controls">
+    <label>
+      Time of flight T (s): <input type="range" id="scale" min="0" max="150" value="40" step="5">
+      <span class="value" id="scaleVal">0.40</span>
+    </label>
+    <label>
+      Goal X: <input type="range" id="goalX" min="0" max="100" value="50" step="1">
+      <span class="value" id="goalXVal">50</span>%
+    </label>
+    <label>
+      Goal Y: <input type="range" id="goalY" min="0" max="100" value="25" step="1">
+      <span class="value" id="goalYVal">25</span>%
+    </label>
+    <label>
+      <input type="checkbox" id="showGrid" checked> Grid
+    </label>
+    <label>
+      <input type="checkbox" id="showDistLine" checked> Distance line
+    </label>
+    <label>
+      <input type="checkbox" id="useRegressionT"> Use regression T (from distance)
+    </label>
+  </div>
+  <div class="wrap">
+    <canvas id="canvas" width="720" height="720"></canvas>
+    <div class="stats" id="stats">Move mouse over canvas</div>
+  </div>
+  <p class="help">Field 144″ × 144″. Mouse sensitivity scaled down. “Use regression T” = T from distance: hood angle from your regression (cubic), launch speed from physics (required to hit goal at that d and θ), then T = 2·v·sin(θ)/g.</p>
+
+  <script>
+    (function () {
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
+      const statsEl = document.getElementById('stats');
+      const scaleInput = document.getElementById('scale');
+      const scaleVal = document.getElementById('scaleVal');
+      const goalXInput = document.getElementById('goalX');
+      const goalXVal = document.getElementById('goalXVal');
+      const goalYInput = document.getElementById('goalY');
+      const goalYVal = document.getElementById('goalYVal');
+      const showGridEl = document.getElementById('showGrid');
+      const showDistLineEl = document.getElementById('showDistLine');
+      const useRegressionTEl = document.getElementById('useRegressionT');
+
+      // FTC field: 12 ft × 12 ft = 144 in
+      const FIELD_IN = 144;
+      const PX_PER_IN = canvas.width / FIELD_IN;
+
+      let mouse = { x: null, y: null };
+      let prev = { x: null, y: null, t: null };
+      let velocity = { x: 0, y: 0 };
+      const VEL_SMOOTH = 0.2;
+      // Scale down mouse movement (0.1 = 10% sensitivity)
+      const VEL_SENSITIVITY = 0.1;
+
+      // ----- Time in air: hood from regression, speed from physics (required to hit goal at that distance/angle) -----
+      const G = 9.81;
+      const H = 0.69;  // launch height above target (m), match ShotPhysics/IntakeV2
+      // (1) Hood: -0.0000200129x³ + 0.00741561x² - 0.953361x + 83.35366 (clamped 40–70°)
+      const HOOD_A = -0.0000200129, HOOD_B = 0.00741561, HOOD_C = -0.953361, HOOD_D = 83.35366;
+      function speedForShot(distanceM, thetaRad) {
+        const cos = Math.cos(thetaRad);
+        const tan = Math.tan(thetaRad);
+        const denom = 2 * cos * cos * (distanceM * tan - H);
+        if (denom <= 0) return 0;
+        return distanceM * Math.sqrt(G / denom);
+      }
+      function timeInAir(speedMS, thetaRad) {
+        return 2 * speedMS * Math.sin(thetaRad) / G;
+      }
+      // Distance → hood (regression) and required launch speed (physics for that d and θ) → time in air
+      function timeOfFlightFromDistanceInches(distanceInches) {
+        distanceInches = Math.max(12, Math.min(180, distanceInches));
+        const x = distanceInches;
+        const hoodDeg = Math.max(40, Math.min(70, HOOD_A * x * x * x + HOOD_B * x * x + HOOD_C * x + HOOD_D));
+        const thetaRad = hoodDeg * Math.PI / 180;
+        const distanceM = distanceInches * 0.0254;
+        const speedMPS = speedForShot(distanceM, thetaRad);
+        const t = timeInAir(speedMPS, thetaRad);
+        return Math.max(0, t);  // guard against physics edge case (denom <= 0 → speed 0 → t 0)
+      }
+
+      function getGoalPx() {
+        return {
+          x: (goalXInput.value / 100) * canvas.width,
+          y: (goalYInput.value / 100) * canvas.height
+        };
+      }
+
+      // Scale = time of flight in seconds (0–1.5)
+      function getScaleSeconds() {
+        return Number(scaleInput.value) / 100;
+      }
+
+      function dist(a, b) {
+        return Math.hypot(b.x - a.x, b.y - a.y);
+      }
+
+      function angleDeg(dx, dy) {
+        return (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
+      }
+
+      canvas.addEventListener('mousemove', function (e) {
+        const r = canvas.getBoundingClientRect();
+        const x = ((e.clientX - r.left) / r.width) * canvas.width;
+        const y = ((e.clientY - r.top) / r.height) * canvas.height;
+        const t = performance.now() / 1000;
+        if (prev.x != null && prev.t != null && t > prev.t) {
+          const dt = Math.min(t - prev.t, 0.1);
+          const vx = ((x - prev.x) / dt) * VEL_SENSITIVITY;
+          const vy = ((y - prev.y) / dt) * VEL_SENSITIVITY;
+          velocity.x = velocity.x * (1 - VEL_SMOOTH) + vx * VEL_SMOOTH;
+          velocity.y = velocity.y * (1 - VEL_SMOOTH) + vy * VEL_SMOOTH;
+        }
+        prev = { x, y, t };
+        mouse.x = x;
+        mouse.y = y;
+      });
+
+      canvas.addEventListener('mouseleave', function () {
+        mouse.x = null;
+        mouse.y = null;
+        prev = { x: null, y: null, t: null };
+        velocity.x = 0;
+        velocity.y = 0;
+      });
+
+      scaleInput.addEventListener('input', function () { scaleVal.textContent = (Number(scaleInput.value) / 100).toFixed(2); });
+      goalXInput.addEventListener('input', function () { goalXVal.textContent = goalXInput.value; });
+      goalYInput.addEventListener('input', function () { goalYVal.textContent = goalYInput.value; });
+
+      function draw() {
+        ctx.fillStyle = '#16213e';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const goal = getGoalPx();
+        let scaleSec = getScaleSeconds();
+        let timeOfFlightSource = 'slider';
+        if (mouse.x != null && mouse.y != null && useRegressionTEl.checked) {
+          const distToGoalPx = Math.hypot(goal.x - mouse.x, goal.y - mouse.y);
+          const distToGoalIn = distToGoalPx / PX_PER_IN;
+          scaleSec = timeOfFlightFromDistanceInches(distToGoalIn);
+          timeOfFlightSource = 'regression';
+        }
+        // Virtual goal = goal - velocity * T (velocity in px/s, T in s → offset in px)
+        const vgx = goal.x - velocity.x * scaleSec;
+        const vgy = goal.y - velocity.y * scaleSec;
+        const virtualGoal = { x: vgx, y: vgy };
+
+        if (showGridEl.checked) {
+          ctx.strokeStyle = '#0f3460';
+          ctx.lineWidth = 1;
+          // Grid every 24 in (2 ft)
+          for (let i = 0; i <= 6; i++) {
+            const a = (i / 6) * canvas.width;
+            const b = (i / 6) * canvas.height;
+            ctx.beginPath();
+            ctx.moveTo(a, 0);
+            ctx.lineTo(a, canvas.height);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(0, b);
+            ctx.lineTo(canvas.width, b);
+            ctx.stroke();
+          }
+        }
+
+        // Compensation vector: goal -> virtual goal (thin cyan)
+        const compLen = dist(goal, virtualGoal);
+        if (compLen > 2) {
+          ctx.strokeStyle = '#00BCD4';
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([3, 3]);
+          ctx.beginPath();
+          ctx.moveTo(goal.x, goal.y);
+          ctx.lineTo(vgx, vgy);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+
+        // Goal (green)
+        ctx.fillStyle = '#4CAF50';
+        ctx.strokeStyle = '#2E7D32';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(goal.x, goal.y, 12, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#fff';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('goal', goal.x, goal.y + 24);
+
+        // Virtual goal (orange)
+        ctx.fillStyle = '#FF9800';
+        ctx.strokeStyle = '#E65100';
+        ctx.beginPath();
+        ctx.arc(vgx, vgy, 10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#fff';
+        ctx.fillText('virtual', vgx, vgy + 22);
+
+        if (mouse.x != null && mouse.y != null) {
+          const robot = { x: mouse.x, y: mouse.y };
+          const distToGoal = dist(robot, goal);
+          const distToVirtual = dist(robot, virtualGoal);
+
+          // Distance line: robot -> goal (dotted green)
+          if (showDistLineEl.checked) {
+            ctx.strokeStyle = 'rgba(76, 175, 80, 0.7)';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([8, 6]);
+            ctx.beginPath();
+            ctx.moveTo(robot.x, robot.y);
+            ctx.lineTo(goal.x, goal.y);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
+
+          // Robot (blue)
+          ctx.fillStyle = '#2196F3';
+          ctx.strokeStyle = '#1565C0';
+          ctx.beginPath();
+          ctx.arc(mouse.x, mouse.y, 14, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = '#fff';
+          ctx.fillText('robot', mouse.x, mouse.y + 26);
+
+          // Aim line: robot -> virtual goal (yellow)
+          ctx.strokeStyle = '#FFC107';
+          ctx.lineWidth = 3;
+          ctx.setLineDash([6, 4]);
+          ctx.beginPath();
+          ctx.moveTo(mouse.x, mouse.y);
+          ctx.lineTo(vgx, vgy);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Velocity vector (red); length ∝ velocity in in/s (10 px per in/s)
+          const vScale = 10 / PX_PER_IN;
+          const vx = mouse.x + velocity.x * vScale;
+          const vy = mouse.y + velocity.y * vScale;
+          ctx.strokeStyle = '#f44336';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(mouse.x, mouse.y);
+          ctx.lineTo(vx, vy);
+          ctx.stroke();
+          ctx.fillStyle = '#f44336';
+          ctx.beginPath();
+          ctx.arc(vx, vy, 4, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Stats (distances in inches; velocity in in/s)
+          const velMagPx = Math.hypot(velocity.x, velocity.y);
+          const velMagInPerS = velMagPx / PX_PER_IN;
+          const angToGoal = angleDeg(goal.x - robot.x, goal.y - robot.y);
+          const angToVirtual = angleDeg(vgx - robot.x, vgy - robot.y);
+          const angDiff = (angToVirtual - angToGoal + 540) % 360 - 180;
+          const distToGoalIn = distToGoal / PX_PER_IN;
+          const distToVirtualIn = distToVirtual / PX_PER_IN;
+          const compOffsetIn = compLen / PX_PER_IN;
+
+          statsEl.innerHTML =
+            '<span class="label">Distance to goal</span> <span class="hi">' + distToGoalIn.toFixed(1) + ' in</span><br>' +
+            '<span class="label">Distance to virtual</span> <span class="orange">' + distToVirtualIn.toFixed(1) + ' in</span><br>' +
+            '<span class="label">Velocity</span> ' + velMagInPerS.toFixed(1) + ' in/s<br>' +
+            '<span class="label">Time of flight T</span> ' + scaleSec.toFixed(3) + ' s <span class="orange">(' + timeOfFlightSource + ')</span><br>' +
+            '<span class="label">Angle to goal</span> ' + angToGoal.toFixed(1) + '°<br>' +
+            '<span class="label">Angle to virtual</span> ' + angToVirtual.toFixed(1) + '° <span class="orange">(Δ ' + angDiff.toFixed(1) + '°)</span><br>' +
+            '<span class="label">Comp offset</span> ' + compOffsetIn.toFixed(1) + ' in';
+        } else {
+          statsEl.textContent = 'Move mouse over canvas';
+        }
+
+        requestAnimationFrame(draw);
+      }
+
+      draw();
+    })();
+  </script>
+</body>
+</html>

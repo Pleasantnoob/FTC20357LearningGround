@@ -24,11 +24,13 @@ import org.firstinspires.ftc.teamcode.RR.PinpointLocalizer;
 import org.firstinspires.ftc.teamcode.RR.PoseBridge;
 import org.firstinspires.ftc.teamcode.Toros.Drive.CameraRelocalization;
 import org.firstinspires.ftc.teamcode.Toros.Drive.ShotPhysics;
+import org.firstinspires.ftc.teamcode.Toros.Drive.Subsystems.AirSort;
 import org.firstinspires.ftc.teamcode.Toros.Drive.Subsystems.DriveTrain;
 import org.firstinspires.ftc.teamcode.Toros.Drive.Subsystems.IntakeV2;
 import org.firstinspires.ftc.teamcode.Toros.Drive.Subsystems.Turret;
 import org.firstinspires.ftc.vision.VisionPortal;
 import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
+import org.firstinspires.ftc.vision.apriltag.AprilTagGameDatabase;
 import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 
 import java.io.File;
@@ -41,38 +43,41 @@ import java.util.List;
  * Main teleop: drive, odometry, turret, intake, FTC Dashboard.
  *
  * Pose (robot position + heading): from PinpointLocalizer = GoBilda Pinpoint odometry pods + IMU (same as RR).
- * Start position and goal are in FTC official field frame: origin at center of mat, +X to the right from red wall,
- * +Y away from red wall (toward blue). If the robot appears in the wrong place on Dashboard, tune
- * PinpointLocalizer.PARAMS (parYTicks, perpXTicks) and encoder directions in PinpointLocalizer.
+ * Start position and goal: origin at center of mat. Standing on red side: X to the right is negative (-X), Y forward is negative (-Y).
+ * So -X = right, +X = left; -Y = forward (toward center/blue), +Y = back (toward red wall).
+ * If the robot appears in the wrong place on Dashboard, tune PinpointLocalizer.PARAMS (parYTicks, perpXTicks) and encoder directions.
  *
  * Turret: When !lockedOn we aim at goal: angleToGoal uses pose + goal. Angles in [0, 360) (RR convention).
  * Dpad Up = 0°, Dpad Down = 180°; else angleToGoal. Lock-on (Y) = vision; B = exit. Left stick X = nudge.
  *
  * Alliance: Dpad Left = Blue, Dpad Right = Red; start and goal set from red* / blue*.
+ *
+ * Airsort: Operator Back toggles on/off. When on, motif from AprilTags 21/22/23 + ball color from c1,c2,c3
+ * → fast shot (correct color) or slow shot (wrong color). Shot index auto-advances when ball leaves launcher.
  */
 @TeleOp(name = "MainDrive")
 @Config
 public class MainDrive extends LinearOpMode {
     private static final boolean USE_WEBCAM = true;
 
-    /** Start pose and goal (inches, degrees). Set from alliance mode (blue/red). Frame: from audience +Y=forward, -X=left, +X=right, -Y=back. */
-    public static double startX = -48.0;
-    public static double startY = -50.0;
-    public static double startHeadingDeg = -90.0;
-    public static double goalX = -64.0;
-    public static double goalY = -60.0;
+    /** Start pose and goal (inches, degrees). Set from alliance mode (blue/red). From red side: -X = right, -Y = forward (see class doc). */
+    public static double startX = -55.0;
+    public static double startY = 47.0;
+    public static double startHeadingDeg = 130.0;
+    public static double goalX = -70.0;
+    public static double goalY = 64.0;
 
-    /** Red alliance: start -X left, +Y; goal -X left, +Y; heading 90°. */
-    public static double redStartX = -48.0, redStartY = 50.0, redStartHeadingDeg = 90.0;
-    public static double redGoalX = -64.0, redGoalY = 60.0;
-    /** Blue alliance: start -X -Y (left, back); goal -X -Y; heading -90°. Angle-to-goal uses atan2(goal−pose) so any (goalX,goalY) works. */
-    public static double blueStartX = -48.0, blueStartY = -50.0, blueStartHeadingDeg = -90.0;
+    /** Red alliance: same as blue but +Y. Start (-55, 47); goal -X left, +Y; heading 130°. */
+    public static double redStartX = -55.0, redStartY = 47.0, redStartHeadingDeg = 130.0;
+    public static double redGoalX = -70.0, redGoalY = 64.0;
+    /** Blue alliance: mirror of red with -Y and -heading. Start (-55, -47); goal -X -Y; heading -130°. */
+    public static double blueStartX = -55.0, blueStartY = -47.0, blueStartHeadingDeg = -130.0;
     public static double blueGoalX = -70.0, blueGoalY = -64.0;
 
     /** If turret mechanical 0° is not aligned with robot +X, add offset here (e.g. 90 or -90). Tune on Dashboard. */
     public static double turretAngleOffsetDeg = 0.0;
 
-    /** Velocity compensation: when true, turret aims at (goal - velocity * timeOfFlight). */
+    /** Velocity compensation: virtual goal = goal - velocity * (gain * timeOfFlight). Backwards: virtual goal farther than goal; side-to-side: aim opposite to motion. */
     public static boolean turretVelocityCompensation = true;
     public static double turretVelocityCompGain = 1.0;
 
@@ -85,12 +90,18 @@ public class MainDrive extends LinearOpMode {
     DriveTrain drivetrain;
     IntakeV2 intake;
     Turret turret;
+    AirSort airSort;
     public ColorSensor c3;
+    /** true = airsort mode: launcher uses fast/slow shot from motif + ball color. Toggle: Operator Back. */
+    private boolean airSortActive = false;
+    private boolean prevBack = false;
+    /** Delay (ms) from shot detected until shot index advances. Tune in Dashboard if index was too slow. */
+    public static double airsortAdvanceDelayMs = 250;
     List<LynxModule> allHubs;
     Servo led;
     private boolean lockedOn = false;
     /** true = blue alliance (start/goal from blue*), false = red (red*). Dpad Left = Blue, Dpad Right = Red. */
-    private boolean mode = true;
+    private boolean mode = false;
     /** Frozen heading (deg) when lock-on is on; used by turret instead of live gyro. */
     double k = 0;
     /** Field angle (deg) for turret when !lockedOn: angleToGoal (aim) or 0 / 180 from dpad. [0, 360). */
@@ -152,6 +163,7 @@ public class MainDrive extends LinearOpMode {
         mecanumDrive.localizer.setPose(initialPose);
         intake = new IntakeV2(hardwareMap, gamepad1, gamepad2, aprilTag);
         turret = new Turret(hardwareMap, gamepad2);
+        airSort = new AirSort(aprilTag, intake.c1, intake.c2, intake.c3);
 
         // During init: Dpad Left = Blue, Dpad Right = Red (start/goal and pose update)
         while (!isStarted() && opModeIsActive()) {
@@ -211,26 +223,28 @@ public class MainDrive extends LinearOpMode {
 
             // --- 2. Turret: odometry aiming at goal (with optional velocity compensation). Field angles [0, 360). ---
             turret.botHeading = Turret.wrapDeg360(Math.toDegrees(pose.heading.toDouble()));
-            // Velocity comp: aim at (goal - vel*t) so when the note lands we've moved into line. All in field frame (in, in/s, s).
-            Vector2d robotVel = driveVel.linearVel;  // robot frame: x=forward, y=left (RR convention)
+            // Robot velocity in field frame (in/s). RR robot frame: x=forward, y=left.
+            Vector2d robotVel = driveVel.linearVel;
             double h = pose.heading.toDouble();
             double c = Math.cos(h), s = Math.sin(h);
-            double worldVx = c * robotVel.x - s * robotVel.y;  // field frame in/s
+            double worldVx = c * robotVel.x - s * robotVel.y;
             double worldVy = s * robotVel.x + c * robotVel.y;
             double distForShotVel = getDistance();
             double[] hoodSpeedVel = ShotPhysics.hoodAndSpeedFromDistanceInches(distForShotVel);
-            // Use actual hood and flywheel for time-of-flight so velocity comp matches the real shot (manual vs auto).
             double hoodDegForVelComp = IntakeV2.manualMode ? IntakeV2.manualHoodAngleDeg : hoodSpeedVel[0];
             double speedMPSForVelComp = IntakeV2.manualMode
                 ? IntakeV2.launchSpeedMPSFromTicksPerSec(IntakeV2.manualTargetVel)
                 : hoodSpeedVel[1];
             double timeOfFlightS = ShotPhysics.timeInAir(speedMPSForVelComp, Math.toRadians(hoodDegForVelComp));
+            // Virtual goal = goal - velocity * (gain * T). So when moving backwards (vel away from goal), virtual goal is
+            // farther from the robot than the goal (beyond the goal). Same formula works for side-to-side: we aim opposite
+            // to velocity so the note can still land at the goal as we move.
             double aimGoalX = goalX;
             double aimGoalY = goalY;
-            // Aim = goal - gain*(vel*T). Use negative gain to lead (aim ahead) so note lands on goal when moving.
             if (turretVelocityCompensation && turretVelocityCompGain != 0) {
-                aimGoalX = goalX - turretVelocityCompGain * (worldVx * timeOfFlightS);
-                aimGoalY = goalY - turretVelocityCompGain * (worldVy * timeOfFlightS);
+                double scale = turretVelocityCompGain * timeOfFlightS;  // in (velocity in/s * T s → in)
+                aimGoalX = goalX - worldVx * scale;
+                aimGoalY = goalY - worldVy * scale;
             }
             double angleToGoalRad = Math.atan2(aimGoalY - pose.position.y, aimGoalX - pose.position.x);
             double angleToGoalDeg = Turret.wrapDeg360(Math.toDegrees(angleToGoalRad) + turretAngleOffsetDeg);
@@ -255,6 +269,24 @@ public class MainDrive extends LinearOpMode {
                 fieldHoldAngle = turret.targetAngle;
             }
             lockOn();
+            // Airsort toggle: Operator Back. When on: motif + ball color → fast/slow shot.
+            if (gamepad2.back && !prevBack) {
+                airSortActive = !airSortActive;
+                IntakeV2.airSortEnabled = airSortActive;
+                if (airSortActive) {
+                    airSort.setShotIndex(0);  // reset to first shot when starting a run
+                    aprilTag.setDecimation(2);  // better range for obelisk tags 21/22/23
+                } else {
+                    intake.clearAirSortPreset();
+                    aprilTag.setDecimation(3);
+                }
+            }
+            prevBack = gamepad2.back;
+            if (airSortActive) {
+                airSort.setAdvanceDelayMs((long) airsortAdvanceDelayMs);
+                airSort.update();
+                intake.setAirSortPreset(airSort.getShotMode(), getDistanceFromOdometry());
+            }
             intake.runLauncher();
             intake.runIntake();
             intake.transfer();
@@ -281,7 +313,10 @@ public class MainDrive extends LinearOpMode {
             Drawing.drawRobot(packet.fieldOverlay(), displayPose, 1, cameraPose != null ? "#FF5722" : "#3F51B5"); // robot at estimated pose (orange = camera, blue = odom)
             if (cameraPose != null) Drawing.drawRobot(packet.fieldOverlay(), pose, 1, "#9FA8DA"); // odometry as lighter circle when camera active (compare)
             Drawing.drawGoal(packet.fieldOverlay(), goalX, goalY, "#4CAF50");         // goal (green)
-            Drawing.drawRobotToGoalLine(packet.fieldOverlay(), displayPose, aimGoalX, aimGoalY, "#FFC107"); // aim line from estimated pose (yellow)
+            if (turretVelocityCompensation && turretVelocityCompGain != 0) {
+                Drawing.drawVirtualGoal(packet.fieldOverlay(), aimGoalX, aimGoalY, "#FF9800"); // virtual goal (orange) when vel comp on
+            }
+            Drawing.drawRobotToGoalLine(packet.fieldOverlay(), displayPose, aimGoalX, aimGoalY, "#FFC107"); // aim line from robot to aim point (yellow)
             double distToGoalIn = Math.hypot(pose.position.x - goalX, pose.position.y - goalY);
             double distForShot = getDistance();
             double hoodDeg = Math.max(40, Math.min(70, 70 - intake.getHood() * 30));
@@ -302,7 +337,20 @@ public class MainDrive extends LinearOpMode {
             packet.put("turret_robot_deg", turret.getTurretAngleRobot());
             packet.put("field_hold_deg", fieldHoldAngle);
             packet.put("vel_comp_on", turretVelocityCompensation && turretVelocityCompGain != 0);
-            packet.put("launcher_mode", IntakeV2.manualMode ? "manual (Dashboard)" : "auto (from distance)");
+            packet.put("launcher_mode", airSortActive ? "airsort (fast/slow)" : (IntakeV2.manualMode ? "manual (Dashboard)" : "auto (from distance)"));
+            packet.put("airsort_on", airSortActive);
+            if (airSortActive) {
+                packet.put("airsort_shot", airSort.getShotIndex() + 1);
+                packet.put("airsort_mode", airSort.getShotMode().name());
+                packet.put("airsort_ball", airSort.getBallAtLauncher());
+                packet.put("airsort_want", airSort.getDesiredColorForCurrentShot());
+                packet.put("airsort_motif_stored", airSort.isMotifStored());
+                packet.put("airsort_advance_delay_ms", airsortAdvanceDelayMs);
+                List<AprilTagDetection> det = aprilTag.getDetections();
+                StringBuilder tagIds = new StringBuilder();
+                for (AprilTagDetection d : det) { if (tagIds.length() > 0) tagIds.append(","); tagIds.append(d.id); }
+                packet.put("airsort_detected_tag_ids", tagIds.length() > 0 ? tagIds.toString() : "none");
+            }
             packet.put("manual_hood_deg", IntakeV2.manualHoodAngleDeg);
             packet.put("manual_target_vel", IntakeV2.manualTargetVel);
             packet.put("flywheel_p", IntakeV2.p1);
@@ -366,7 +414,7 @@ public class MainDrive extends LinearOpMode {
                 //.setDrawCubeProjection(false)
                 //.setDrawTagOutline(true)
                 //.setTagFamily(AprilTagProcessor.TagFamily.TAG_36h11)
-                //.setTagLibrary(AprilTagGameDatabase.getCenterStageTagLibrary())
+                .setTagLibrary(AprilTagGameDatabase.getCurrentGameTagLibrary())
                 //.setOutputUnits(DistanceUnit.INCH, AngleUnit.DEGREES)
                 // == CAMERA CALIBRATION ==
                 // If you do not manually specify calibration parameters, the SDK will attempt
@@ -457,6 +505,26 @@ public class MainDrive extends LinearOpMode {
         telemetry.addData("Lock-on", lockedOn);
 
         // --- 4. Intake / launcher ---
+        telemetry.addLine("");
+        telemetry.addLine("--- Airsort (Operator Back = toggle) ---");
+        telemetry.addData("Airsort", airSortActive ? "ON" : "OFF");
+        if (airSortActive) {
+            telemetry.addData("Shot", "%d/3", airSort.getShotIndex() + 1);
+            telemetry.addData("Mode", airSort.getShotMode().name());
+            telemetry.addData("Ball at launcher", airSort.getBallAtLauncher());
+            telemetry.addData("Want", airSort.getDesiredColorForCurrentShot());
+            telemetry.addData("Motif stored", airSort.isMotifStored() ? "yes" : "no (need tag 21/22/23)");
+            List<AprilTagDetection> det = aprilTag.getDetections();
+            StringBuilder ids = new StringBuilder();
+            boolean seenMotif = false;
+            for (AprilTagDetection d : det) {
+                if (ids.length() > 0) ids.append(", ");
+                ids.append(d.id);
+                if (d.id == 21 || d.id == 22 || d.id == 23) seenMotif = true;
+            }
+            telemetry.addData("Detected tag IDs", ids.length() > 0 ? ids.toString() : "none");
+            if (seenMotif) telemetry.addLine("(Motif tag 21/22/23 visible → will store)");
+        }
         telemetry.addLine("");
         telemetry.addLine("--- Intake / launcher ---");
         telemetry.addData("Launcher vel", intake.getLauncherSpeed());

@@ -36,6 +36,16 @@ public final class Drawing {
         c.fillCircle(goalX, goalY, 3);
     }
 
+    /** Draw virtual goal (velocity-comp aim point) as a distinct marker. Use when comp is on so it’s visible vs real goal. */
+    public static void drawVirtualGoal(Canvas c, double x, double y, String color) {
+        c.setStrokeWidth(2);
+        c.setStroke(color);
+        c.setFill(color);
+        final double r = 6;
+        c.strokeCircle(x, y, r);
+        c.fillCircle(x, y, r - 2);
+    }
+
     /** Draw line from robot to goal (turret aim line). */
     public static void drawRobotToGoalLine(Canvas c, Pose2d robot, double goalX, double goalY, String color) {
         c.setStrokeWidth(2);

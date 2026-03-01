@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MainDrive Robot Path — FTC Field</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; margin: 12px; background: #1a1a2e; color: #eee; }
+    h1 { font-size: 1.2rem; margin-bottom: 8px; }
+    .info { font-size: 0.85rem; color: #aaa; margin-bottom: 12px; }
+    #canvas { display: block; background: #16213e; border-radius: 8px; }
+    .controls { margin-top: 12px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+    input[type="checkbox"] { accent-color: #4CAF50; }
+    input[type="range"] { width: 120px; }
+  </style>
+</head>
+<body>
+  <h1>Robot path on field (MainDrive log)</h1>
+  <p class="info">Pose data from maindrive_log.txt. Field: 12 ft × 12 ft (144 in). Origin at center. +X right, +Y forward (away from red wall).</p>
+  <canvas id="canvas" width="800" height="800"></canvas>
+  <div class="controls">
+    <label><input type="checkbox" id="showHeading" checked> Show heading arrows (every 50 pts)</label>
+    <label><input type="checkbox" id="showStartEnd" checked> Show start (green) / end (red)</label>
+    <label>Path opacity: <input type="range" id="pathOpacity" min="20" max="100" value="90">%</label>
+  </div>
+
+  <script src="path_data.js"></script>
+  <script>
+    (function() {
+      if (typeof PATH_DATA === 'undefined') {
+        document.body.innerHTML = '<p style="color:#f44336">Load error: path_data.js not found. Keep path_data.js in the same folder as this HTML.</p>';
+        return;
+      }
+
+      const FIELD_IN = 144;
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
+      const width = canvas.width;
+      const height = canvas.height;
+      const padding = 40;
+      const scale = Math.min((width - 2 * padding) / FIELD_IN, (height - 2 * padding) / FIELD_IN);
+      const cx = width / 2;
+      const cy = height / 2;
+
+      function fieldToScreen(xIn, yIn) {
+        return {
+          x: cx + xIn * scale,
+          y: cy - yIn * scale
+        };
+      }
+
+      function draw() {
+        ctx.fillStyle = '#16213e';
+        ctx.fillRect(0, 0, width, height);
+
+        const showHeading = document.getElementById('showHeading').checked;
+        const showStartEnd = document.getElementById('showStartEnd').checked;
+        const pathOpacity = document.getElementById('pathOpacity').value / 100;
+
+        const data = PATH_DATA;
+        if (!data || data.length === 0) return;
+
+        const xs = data.map(p => p[0]);
+        const ys = data.map(p => p[1]);
+        const minX = Math.min(...xs);
+        const maxX = Math.max(...xs);
+        const minY = Math.min(...ys);
+        const maxY = Math.max(...ys);
+
+        ctx.strokeStyle = '#37474f';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(
+          fieldToScreen(-FIELD_IN/2, FIELD_IN/2).x,
+          fieldToScreen(-FIELD_IN/2, FIELD_IN/2).y,
+          FIELD_IN * scale,
+          FIELD_IN * scale
+        );
+        ctx.strokeStyle = '#263238';
+        ctx.setLineDash([4, 4]);
+        const origin = fieldToScreen(0, 0);
+        ctx.beginPath();
+        ctx.moveTo(origin.x, 0);
+        ctx.lineTo(origin.x, height);
+        ctx.moveTo(0, origin.y);
+        ctx.lineTo(width, origin.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.strokeStyle = 'rgba(76, 175, 80, ' + pathOpacity + ')';
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        const first = fieldToScreen(data[0][0], data[0][1]);
+        ctx.moveTo(first.x, first.y);
+        for (let i = 1; i < data.length; i++) {
+          const p = fieldToScreen(data[i][0], data[i][1]);
+          ctx.lineTo(p.x, p.y);
+        }
+        ctx.stroke();
+
+        if (showHeading) {
+          const step = Math.max(1, Math.floor(data.length / 80));
+          for (let i = 0; i < data.length; i += step) {
+            const [x, y, h] = data[i];
+            const deg = (h || 0) * Math.PI / 180;
+            const len = 12;
+            const end = fieldToScreen(x + len * Math.cos(deg), y + len * Math.sin(deg));
+            const start = fieldToScreen(x, y);
+            ctx.strokeStyle = 'rgba(255, 193, 7, 0.7)';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(start.x, start.y);
+            ctx.lineTo(end.x, end.y);
+            ctx.stroke();
+          }
+        }
+
+        if (showStartEnd && data.length >= 2) {
+          const start = fieldToScreen(data[0][0], data[0][1]);
+          const end = fieldToScreen(data[data.length - 1][0], data[data.length - 1][1]);
+          ctx.fillStyle = '#4CAF50';
+          ctx.beginPath();
+          ctx.arc(start.x, start.y, 8, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = '#fff';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          ctx.fillStyle = '#f44336';
+          ctx.beginPath();
+          ctx.arc(end.x, end.y, 8, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        }
+      }
+
+      document.getElementById('showHeading').onchange = draw;
+      document.getElementById('showStartEnd').onchange = draw;
+      document.getElementById('pathOpacity').oninput = draw;
+      draw();
+    })();
+  </script>
+</body>
+</html>

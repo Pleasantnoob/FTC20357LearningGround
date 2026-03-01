@@ -53,4 +53,46 @@ public final class ShotPhysics {
         double v = speedForShot(dM, theta);
         return new double[] { hoodAngleDeg, v };
     }
+
+    private static final double MIN_HOOD_DEG = 40.0;
+    private static final double MAX_HOOD_DEG = 70.0;
+    private static final double DEG_STEP = 0.5;
+
+    /**
+     * Fast shot: minimize time in air subject to hood [40°, 70°] and launch speed ≤ vMaxMPS.
+     * Picks the flattest feasible angle (smallest θ with v_required ≤ vMax) for minimum T.
+     * Returns { hoodAngleDeg, speedMPS }. Distance clamped to valid physics range.
+     */
+    public static double[] fastShotHoodAndSpeedMPS(double distanceInches, double vMaxMPS) {
+        double dM = distanceInches * 0.0254;
+        dM = Math.max(0.3, Math.min(3.5, dM));
+        double thetaDeg = MIN_HOOD_DEG;
+        double vRequired = speedForShot(dM, Math.toRadians(thetaDeg));
+        while (vRequired > vMaxMPS && thetaDeg <= MAX_HOOD_DEG) {
+            thetaDeg += DEG_STEP;
+            vRequired = speedForShot(dM, Math.toRadians(thetaDeg));
+        }
+        thetaDeg = Math.min(thetaDeg, MAX_HOOD_DEG);
+        double v = Math.min(speedForShot(dM, Math.toRadians(thetaDeg)), vMaxMPS);
+        return new double[] { thetaDeg, v };
+    }
+
+    /**
+     * Slow shot: maximize time in air subject to hood [40°, 70°] and launch speed ≤ vMaxMPS.
+     * Finds the steepest angle (max θ) that still reaches the goal with v ≤ vMax.
+     * Returns { hoodAngleDeg, speedMPS }. Distance clamped to valid physics range.
+     */
+    public static double[] slowShotHoodAndSpeedMPS(double distanceInches, double vMaxMPS) {
+        double dM = distanceInches * 0.0254;
+        dM = Math.max(0.3, Math.min(3.5, dM));
+        double thetaDeg = MAX_HOOD_DEG;
+        double vRequired = speedForShot(dM, Math.toRadians(thetaDeg));
+        while (vRequired > vMaxMPS && thetaDeg >= MIN_HOOD_DEG) {
+            thetaDeg -= DEG_STEP;
+            vRequired = speedForShot(dM, Math.toRadians(thetaDeg));
+        }
+        thetaDeg = Math.max(thetaDeg, MIN_HOOD_DEG);
+        double v = Math.min(speedForShot(dM, Math.toRadians(thetaDeg)), vMaxMPS);
+        return new double[] { thetaDeg, v };
+    }
 }
