@@ -40,6 +40,9 @@ public class CameraRelocalization {
     public static double CAMERA_OFFSET_X = 0.0;
     public static double CAMERA_OFFSET_Y = 0.0;
 
+    /** Scale on camera→tag distance. Pose stuck near goal = vector too small. If SDK gives CM not MM: use 10 (corrects cm→in). If SDK gives MM: use 1. Tune on Dashboard. */
+    public static double CAMERA_DISTANCE_SCALE = 10.0;
+
     /**
      * Robot pose (field frame, inches) from one AprilTag detection and known tag field position.
      * Uses odometry heading to convert camera→tag from robot frame to field frame.
@@ -50,10 +53,10 @@ public class CameraRelocalization {
      * @param robotHeadingRad   Robot heading from odometry (radians). RR convention: 0 = +X, CCW positive.
      */
     public static Pose2d robotPoseFromTag(AprilTagDetection d, double tagFieldXInches, double tagFieldYInches, double robotHeadingRad) {
-        // --- 1. Camera→tag in camera frame: ftcPose X,Y,Z are MILLIMETERS (SDK CenterStage) → convert to inches ---
-        double x = d.ftcPose.x * MM_TO_IN;
-        double y = d.ftcPose.y * MM_TO_IN;
-        double z = d.ftcPose.z * MM_TO_IN;
+        // --- 1. Camera→tag in camera frame. ftcPose may be mm (use scale 1) or cm (use scale 10); convert to inches then apply scale. ---
+        double x = d.ftcPose.x * MM_TO_IN * CAMERA_DISTANCE_SCALE;
+        double y = d.ftcPose.y * MM_TO_IN * CAMERA_DISTANCE_SCALE;
+        double z = d.ftcPose.z * MM_TO_IN * CAMERA_DISTANCE_SCALE;
         // Now x,y,z in inches: right, forward from camera, up.
 
         // --- 2. 15° tilt: project onto horizontal (field) plane. Camera Y is tilted up by CAMERA_TILT_DEG. ---

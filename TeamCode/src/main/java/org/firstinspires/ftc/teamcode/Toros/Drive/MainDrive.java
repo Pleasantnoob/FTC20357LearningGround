@@ -72,9 +72,12 @@ public class MainDrive extends LinearOpMode {
     /** If turret mechanical 0° is not aligned with robot +X, add offset here (e.g. 90 or -90). Tune on Dashboard. */
     public static double turretAngleOffsetDeg = 0.0;
 
-    /** Velocity compensation: when true, turret aims at (goal - velocity * timeOfFlight). Off for now while tuning launcher. */
-    public static boolean turretVelocityCompensation = false;
+    /** Velocity compensation: when true, turret aims at (goal - velocity * timeOfFlight). */
+    public static boolean turretVelocityCompensation = true;
     public static double turretVelocityCompGain = 1.0;
+
+    /** When true, use AprilTag to estimate robot pose for display/aim; when false, use odometry only. */
+    public static boolean useCameraRelocalization = false;
 
     public AprilTagProcessor aprilTag;
     public String[] motif = new String[3];
@@ -260,18 +263,19 @@ public class MainDrive extends LinearOpMode {
                     cameraDistanceInches = d.ftcPose.range * M_TO_IN;
                 }
                 Vector2d tagPos = CameraRelocalization.getTagFieldPosition(d.id);
-                if (tagPos != null && d.id == CameraRelocalization.BLUE_GOAL_TAG_ID) {
+                if (useCameraRelocalization && tagPos != null && d.id == CameraRelocalization.BLUE_GOAL_TAG_ID) {
                     cameraPose = CameraRelocalization.robotPoseFromTag(d, tagPos.x, tagPos.y, headingRad);
                 }
             }
 
-            // --- 5. FTC Dashboard: field drawing + numbers (all localization viz here) ---
+            // --- 5. FTC Dashboard: field drawing. Use camera relocalization as robot's estimated location when tag visible, else odometry. ---
             TelemetryPacket packet = new TelemetryPacket();
-            Drawing.drawPoseHistory(packet.fieldOverlay(), poseHistory, "#3F51B5"); // path (blue)
-            Drawing.drawRobot(packet.fieldOverlay(), pose, 1, "#3F51B5");             // odometry robot (blue)
+            Pose2d displayPose = (cameraPose != null) ? cameraPose : pose;  // estimated robot location for field overlay
+            Drawing.drawPoseHistory(packet.fieldOverlay(), poseHistory, "#3F51B5");   // path (odometry history)
+            Drawing.drawRobot(packet.fieldOverlay(), displayPose, 1, cameraPose != null ? "#FF5722" : "#3F51B5"); // robot at estimated pose (orange = camera, blue = odom)
+            if (cameraPose != null) Drawing.drawRobot(packet.fieldOverlay(), pose, 1, "#9FA8DA"); // odometry as lighter circle when camera active (compare)
             Drawing.drawGoal(packet.fieldOverlay(), goalX, goalY, "#4CAF50");         // goal (green)
-            Drawing.drawRobotToGoalLine(packet.fieldOverlay(), pose, aimGoalX, aimGoalY, "#FFC107"); // aim line = where turret points (yellow)
-            if (cameraPose != null) Drawing.drawCameraPose(packet.fieldOverlay(), cameraPose, "#FF5722"); // camera reloc (orange, inches)
+            Drawing.drawRobotToGoalLine(packet.fieldOverlay(), displayPose, aimGoalX, aimGoalY, "#FFC107"); // aim line from estimated pose (yellow)
             double distToGoalIn = Math.hypot(pose.position.x - goalX, pose.position.y - goalY);
             double distForShot = getDistance();
             double hoodDeg = Math.max(40, Math.min(70, 70 - intake.getHood() * 30));
@@ -283,8 +287,10 @@ public class MainDrive extends LinearOpMode {
             packet.put("time_in_air_s", shot[1]);
             packet.put("odom_x", pose.position.x);
             packet.put("odom_y", pose.position.y);
+            packet.put("est_x", displayPose.position.x);
+            packet.put("est_y", displayPose.position.y);
             packet.put("odom_heading_deg", Math.toDegrees(pose.heading.toDouble()));
-            packet.put("pose_src", "Pinpoint (pods+IMU)");
+            packet.put("pose_src", cameraPose != null ? "camera (reloc)" : "Pinpoint (pods+IMU)");
             packet.put("angle_to_goal_deg", angleToGoalDeg);
             packet.put("turret_field_deg", turret.getTurretAngleField());
             packet.put("turret_robot_deg", turret.getTurretAngleRobot());
@@ -534,6 +540,10 @@ public class MainDrive extends LinearOpMode {
         return distance;
     }
 
+    /** Distance to goal in inches from odometry only (pose vs goal). Use for regression launcher. */
+    public static double getDistanceFromOdometry() {
+        return Math.hypot(distanceX, distanceY);
+    }
 
     //notes
     // make the code set allaince upon looking at the corresponding apriltag

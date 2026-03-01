@@ -46,7 +46,8 @@ public class IntakeV2 {
     public static double accel = -30;
 
     public static double f1 = 0;
-    public static double targetVel = -1800;
+    /** Effective target (used by PID). Set from manualTargetVel when useManualLauncherParams, or from auto/left_bumper. Not for Dashboard—edit manualTargetVel. */
+    private static double targetVel = -1800;
     private Gamepad gamepad2;
     public int threshold = 30;
 
@@ -105,10 +106,10 @@ public class IntakeV2 {
             trans.setPower(0);
         }
 
-        if(gamepad1.dpadUpWasPressed()){
-            targetVel -=50;
+        if (gamepad1.dpadUpWasPressed()) {
+            targetVel -= 50;
         } else if (gamepad1.dpadDownWasPressed()) {
-            targetVel +=50;
+            targetVel += 50;
         }
 
 
@@ -127,20 +128,17 @@ public class IntakeV2 {
             }
 
             if (gamepad2.right_trigger > 0.1) {
-                if (Math.abs(launch.getVelocity() - targetVel) <= threshold) { //threshold velocity
-                    trans.setPower(1);
-                    intakeMotor.setPower(-1);
-                }
-                else {
+                if (Math.abs(launch.getVelocity() - targetVel) <= threshold) {
+                    // Feed to launcher: both transfer and intake at full power (direction for feed)
+                    trans.setPower(-1.0);
+                    intakeMotor.setPower(-1.0);
+                } else {
                     trans.setPower(0);
                     intakeMotor.setPower(0);
-
                 }
-            }
-            else {
+            } else {
                 trans.setPower(0);
                 intakeMotor.setPower(0);
-
             }
 
     }
@@ -175,22 +173,20 @@ public class IntakeV2 {
         // Hood is set only in runLauncher() (manual or auto from distance). Do not overwrite here or it jitters.
         }
 
-    public void transfer(){
-        if (gamepad1.right_bumper && c3.blue() > 150){
-            trans.setPower(-0.15);
+    public void transfer() {
+        if (gamepad2.right_trigger > 0.1) {
+            return; // Launcher feed owns trans in runLauncher(); don't overwrite
         }
-
-        else if(gamepad1.right_bumper){
-            trans.setPower(0.35);
-        }
-        else{
+        if (gamepad1.right_bumper && c3.blue() > 150) {
+            trans.setPower(0.15);   // push up (was -0.15)
+        } else if (gamepad1.right_bumper) {
+            trans.setPower(-0.35);  // push up (was 0.35, reversed)
+        } else {
             trans.setPower(0);
         }
-        if(gamepad1.left_bumper){
+        if (gamepad1.left_bumper) {
             trans.setPower(-0.35);
         }
-
-
     }
     public double getLauncherSpeed() {
         return launch.getVelocity();
@@ -210,11 +206,12 @@ public class IntakeV2 {
     public static double minServo = 0.0;
     public static double maxServo = 1.0;
 
-    /** Manual launcher tuning for regression: use these instead of auto hood/vel from distance. Set true to tune on Dashboard. */
-    public static boolean useManualLauncherParams = true;
-    /** Hood angle (deg). 70 = steep, 40 = flat. Same scale as auto (70° = minServo, 40° = maxServo). */
+    // ---------- Dashboard launcher tuning (IntakeV2 section). These are the only ones that affect launcher when useManualLauncherParams is true. ----------
+    /** Use manual hood + velocity below instead of regression from distance. false = use regression by default. */
+    public static boolean useManualLauncherParams = false;
+    /** Hood angle in degrees. 70 = steep (close), 40 = flat (far). Edit this on Dashboard to change hood. */
     public static double manualHoodAngleDeg = 55.0;
-    /** Flywheel target velocity (encoder ticks/s, negative = launch direction). Tune and record with dist_for_shot_in for regression. */
+    /** Flywheel target velocity (encoder ticks/s). Negative = launch direction. Edit this on Dashboard to change shot speed; this is the value the PID uses. */
     public static double manualTargetVel = -1600.0;
 
 
@@ -270,28 +267,35 @@ public class IntakeV2 {
     private double lastHoodValue = -1;
     private static final double HOOD_DEADBAND = 0.015;
 
+    // Regression from distance (inches) to hood angle and flywheel speed
+    // Hood: y = 157.89707 * x^-0.276756  (degrees)
+    // Flywheel: 853.95141 * 1.00455^x (encoder ticks/s magnitude; launch direction = negative)
+    private static final double HOOD_COEF = 157.89707;
+    private static final double HOOD_EXP = -0.276756;
+    private static final double FLYWHEEL_COEF = 853.95141;
+    private static final double FLYWHEEL_BASE = 1.00455;
+    private static final double MIN_HOOD_DEG = 40.0;
+    private static final double MAX_HOOD_DEG = 70.0;
+
     /**
-     * Uses odometry distance to goal (MainDrive.getDistance(), inches) to set hood angle and flywheel target velocity.
-     * Hood range 40–70°. Only updates hood when new value differs by more than deadband to reduce jitter.
+     * Sets hood angle and flywheel target from distance to goal using regression.
+     * Distance from odometry only. Hood: 157.89707 * distance^-0.276756 (clamped 40–70°). Flywheel: -(853.95141 * 1.00455^distance) ticks/s.
      */
     public void updateHoodAndFlywheelFromOdometry() {
-        double distanceInches = MainDrive.getDistance();
-        double[] hoodAndSpeed = ShotPhysics.hoodAndSpeedFromDistanceInches(distanceInches);
-        double hoodAngleDeg = hoodAndSpeed[0];
-        double speedMPS = hoodAndSpeed[1];
+        double distanceInches = MainDrive.getDistanceFromOdometry();
+        distanceInches = Math.max(12.0, Math.min(180.0, distanceInches)); // clamp to valid range
 
-        // Servo mapping: 70° = minServo, 40° = maxServo (range 40–70)
+        double hoodAngleDeg = HOOD_COEF * Math.pow(distanceInches, HOOD_EXP);
+        hoodAngleDeg = Math.max(MIN_HOOD_DEG, Math.min(MAX_HOOD_DEG, hoodAngleDeg));
+
+        double flywheelMagnitude = FLYWHEEL_COEF * Math.pow(FLYWHEEL_BASE, distanceInches);
+        targetVel = (int) -flywheelMagnitude; // negative = launch direction
+
         double hoodValue = minServo + ((70.0 - hoodAngleDeg) / 30.0) * (maxServo - minServo);
         if (lastHoodValue < 0 || Math.abs(hoodValue - lastHoodValue) > HOOD_DEADBAND) {
             hood.setPosition(hoodValue);
             lastHoodValue = hoodValue;
         }
-
-        // Speed (m/s) -> angular vel (rad/s) -> ticks/s
-        double omega = speedMPS / flywheelRadius;
-        ticksPerSecond = omega * 28.0 / (2.0 * Math.PI);
-        ticksPerSecond *= k;
-        targetVel = (int) ticksPerSecond;
     }
 
     /** Unused: do not call. Kept only for reference. Hood is set by updateHoodAndFlywheelFromOdometry() or manual params. */
