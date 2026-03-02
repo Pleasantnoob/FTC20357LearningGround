@@ -251,7 +251,8 @@ public class MainDrive extends LinearOpMode {
             if (!lockedOn) {
                 if (gamepad2.dpad_up) fieldHoldAngle = 0;
                 else if (gamepad2.dpad_down) fieldHoldAngle = 180;
-                else fieldHoldAngle = angleToGoalDeg;  // aim at goal by default
+                else if (Math.abs(gamepad2.left_stick_x) <= 0.1) fieldHoldAngle = angleToGoalDeg;  // aim at goal when not nudging
+                // When left_stick_x nudge is active, keep fieldHoldAngle (Turret updates targetAngle, we store it after runTurretGyro)
                 turret.targetAngle = fieldHoldAngle;
             }
             // Alliance can be changed during run: goal/start update (pose not reset)
@@ -565,7 +566,7 @@ public class MainDrive extends LinearOpMode {
                     turret.setAngle(turret.getTurretAngle() + error * -0.5);
                 }
                 if (Math.abs(error) <= 2) {
-                    turret.setAngle(turret.getTurretAngle() * 1.01);
+                    turret.setAngle(turret.getTurretAngle());  // hold when on target (was *1.01 causing drift)
                 }
             }
         }

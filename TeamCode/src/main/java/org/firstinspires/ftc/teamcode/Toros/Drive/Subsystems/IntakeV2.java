@@ -26,7 +26,6 @@ import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 import org.opencv.core.Mat;
  
 import com.arcrobotics.ftclib.util.LUT;
-import com.sun.tools.javac.Main;
 
 @Config
 public class IntakeV2 {
@@ -393,6 +392,62 @@ public class IntakeV2 {
         if (lastHoodValue < 0 || Math.abs(hoodValue - lastHoodValue) > HOOD_DEADBAND) {
             hood.setPosition(hoodValue);
             lastHoodValue = hoodValue;
+        }
+    }
+
+    /**
+     * Same as updateHoodAndFlywheelFromOdometry() but takes distance directly (for autonomous).
+     * Call this each loop in auto when at shoot position, then runLauncherAuto(true) to feed.
+     */
+    public void setHoodAndFlywheelFromDistance(double distanceInches) {
+        distanceInches = Math.max(12.0, Math.min(180.0, distanceInches));
+        double x = distanceInches;
+        double hoodAngleDeg = HOOD_A * x * x * x + HOOD_B * x * x + HOOD_C * x + HOOD_D;
+        hoodAngleDeg = Math.max(MIN_HOOD_DEG, Math.min(MAX_HOOD_DEG, hoodAngleDeg));
+        double flywheelTarget = FLYWHEEL_SLOPE * x + FLYWHEEL_INTERCEPT;
+        targetVel = (int) flywheelTarget;
+        double hoodValue = minServo + ((70.0 - hoodAngleDeg) / 30.0) * (maxServo - minServo);
+        if (lastHoodValue < 0 || Math.abs(hoodValue - lastHoodValue) > HOOD_DEADBAND) {
+            hood.setPosition(hoodValue);
+            lastHoodValue = hoodValue;
+        }
+    }
+
+    /**
+     * Run flywheel PID and optionally feed (for autonomous). Call setHoodAndFlywheelFromDistance first.
+     * @param feed true to run transfer+intake when at speed (shooting)
+     */
+    public void runLauncherAuto(boolean feed) {
+        controller.setPID(p1, i1, d1);
+        double launchVel = launch.getVelocity();
+        SimpleMotorFeedforward feedforward = new SimpleMotorFeedforward(kS, kV, kA);
+        double pid = controller.calculate(launchVel, targetVel);
+        double ff = feedforward.calculate(targetVel, accel);
+        launch.setPower(pid + ff);
+        if (feed && Math.abs(launch.getVelocity() - targetVel) <= SHOOT_VEL_TOLERANCE) {
+            trans.setPower(-1.0);
+            intakeMotor.setPower(-1.0);
+        } else {
+            trans.setPower(0);
+            intakeMotor.setPower(0);
+        }
+    }
+
+    /** Stop launcher and feed (for end of auto or between cycles). */
+    public void stopLauncherAuto() {
+        launch.setPower(0);
+        trans.setPower(0);
+        intakeMotor.setPower(0);
+    }
+
+    /** Run intake (pull balls in) for autonomous pickup. */
+    public void runIntakeAuto(boolean run) {
+        if (run) {
+            intakeMotor.setPower(-0.57);
+            trans.setPower(-0.18);
+        } else {
+            intakeMotor.setPower(0);
+            trans.setPower(0);
         }
     }
 

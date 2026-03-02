@@ -85,8 +85,18 @@ public class Turret {
         return a;
     }
 
+    /** Wrap angle to [-180, 180) degrees (robot-centric). Use so turret takes shortest path. */
+    public static double wrapDeg180(double a) {
+        while (a > 180) a -= 360;
+        while (a < -180) a += 360;
+        return a;
+    }
+
     /** Ticks per degree of turret output rotation. */
     private static final double TICKS_PER_DEG = (TICKS_PER_MOTOR_REV / 360.0) * INV_GEAR_RATIO;
+
+    /** Nudge sensitivity: degrees per unit of left_stick_x. Adjust target when stick pushed to correct drift/gear skip. */
+    public static double nudgeDegPerUnit = 4.0;
 
     public Turret(HardwareMap hardwareMap, Gamepad gamepad) {
         turretMotor = hardwareMap.get(DcMotorEx.class, "turret");
@@ -112,15 +122,16 @@ public class Turret {
     public void runTurretGyro() {
         // botHeading is set by MainDrive from pose.heading (odometry)
         double ticks = turretMotor.getCurrentPosition();
-        outputDeg = (ticks / TICKS_PER_MOTOR_REV) * 360.0 * GEAR_RATIO;
+        double rawOutputDeg = (ticks / TICKS_PER_MOTOR_REV) * 360.0 * GEAR_RATIO;
         motorPosition = ticks;
-        // Field angle: we command robot angle = (botHeading - targetAngle), so field = botHeading - outputDeg to read targetAngle when on target
-        currentAngle = wrapDeg360(botHeading - outputDeg);
+        // Robot-centric angle in [-180, 180] so turret wraps / takes shortest path
+        outputDeg = wrapDeg180(rawOutputDeg);
+        // Field angle: botHeading - robot-relative (use raw for consistent field angle)
+        currentAngle = wrapDeg360(botHeading - rawOutputDeg);
 
-        // Robot-relative target in [0, 360)
-        targetOutputDeg = wrapDeg360(botHeading - targetAngle);
-        // Target position = nearest tick position that equals targetOutputDeg (mod 360) so turret holds
-        double revs = (ticks / TICKS_PER_DEG - targetOutputDeg) / 360.0;
+        // Robot-relative target in [-180, 180]; then nearest equivalent for shortest path
+        targetOutputDeg = wrapDeg180(botHeading - targetAngle);
+        double revs = (rawOutputDeg - targetOutputDeg) / 360.0;
         double k = Math.round(revs);
         targetPos = (targetOutputDeg + 360.0 * k) * TICKS_PER_DEG;
 
@@ -131,9 +142,9 @@ public class Turret {
         power = pid2 + ff;
         turretMotor.setPower(turretDriveEnabled ? power : 0);
 
-        // Gamepad: left stick X nudge (reversed so left = turret left); angles in [0, 360)
+        // Gamepad: left stick X nudge — adjust target to correct drift/gear skip (MainDrive must not overwrite when nudging)
         if (Math.abs(gamepad2.left_stick_x) > 0.1) {
-            targetAngle = wrapDeg360(targetAngle - gamepad2.left_stick_x * 4);
+            targetAngle = wrapDeg360(targetAngle - gamepad2.left_stick_x * nudgeDegPerUnit);
         }
         if (gamepad2.aWasPressed()) {
             targetAngle = 0;
@@ -152,12 +163,15 @@ public class Turret {
      */
     public void runTurretNoGyro(double k) {
         double ticks = turretMotor.getCurrentPosition();
-        outputDeg = (ticks / TICKS_PER_MOTOR_REV) * 360.0 * GEAR_RATIO;
-        currentAngle = wrapDeg360(wrapDeg360(outputDeg) + k);
+        double rawOutputDeg = (ticks / TICKS_PER_MOTOR_REV) * 360.0 * GEAR_RATIO;
+        outputDeg = wrapDeg180(rawOutputDeg);
+        currentAngle = wrapDeg360(rawOutputDeg + k);
         motorPosition = ticks;
 
-        targetOutputDeg = wrapDeg360(targetAngle - k);
-        targetPos = targetOutputDeg * TICKS_PER_DEG;
+        targetOutputDeg = wrapDeg180(targetAngle - k);
+        double revs = (rawOutputDeg - targetOutputDeg) / 360.0;
+        double kRev = Math.round(revs);
+        targetPos = (targetOutputDeg + 360.0 * kRev) * TICKS_PER_DEG;
 
         SimpleMotorFeedforward feedforward = new SimpleMotorFeedforward(kS, kV, kA);
         controller.setPID(p1, i1, d1);
@@ -167,7 +181,7 @@ public class Turret {
         turretMotor.setPower(turretDriveEnabled ? power : 0);
 
         if (Math.abs(gamepad2.left_stick_x) > 0.1) {
-            targetAngle = wrapDeg360(targetAngle - gamepad2.left_stick_x * 4);
+            targetAngle = wrapDeg360(targetAngle - gamepad2.left_stick_x * nudgeDegPerUnit);
         }
         if (gamepad2.aWasPressed()) {
             targetAngle = 0;
@@ -193,11 +207,11 @@ public class Turret {
         return currentAngle;
     }
 
-    /** Returns current turret angle relative to robot (degrees), [0, 360). Uses encoder only. */
+    /** Returns current turret angle relative to robot (degrees), [-180, 180). Uses encoder only; wrapped for shortest path. */
     public double getTurretAngleRobot() {
         double ticks = turretMotor.getCurrentPosition();
         double robotDeg = (ticks / TICKS_PER_MOTOR_REV) * 360.0 * GEAR_RATIO;
-        return wrapDeg360(robotDeg);
+        return wrapDeg180(robotDeg);
     }
 
     /** Direct power control (no PID). Use for manual testing only. */

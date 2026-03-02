@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FTC Robot Capabilities Overview</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 1rem 1.5rem;
+      background: #1a1d23;
+      color: #e2e4e8;
+      line-height: 1.5;
+    }
+    h1 { color: #7dd3fc; font-size: 1.6rem; margin-bottom: 0.5rem; }
+    h2 { color: #a5b4fc; font-size: 1.2rem; margin-top: 1.5rem; margin-bottom: 0.5rem; }
+    .subtitle { color: #94a3b8; font-size: 0.95rem; margin-bottom: 1.5rem; }
+    section {
+      background: #252930;
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1rem;
+      border-left: 4px solid #475569;
+    }
+    section.turret { border-left-color: #f59e0b; }
+    section.launcher { border-left-color: #22c55e; }
+    section.airsort { border-left-color: #a855f7; }
+    section.vision { border-left-color: #06b6d4; }
+    .flow-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem;
+      margin: 0.5rem 0;
+    }
+    .box {
+      padding: 0.35rem 0.6rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+    .box.input { background: #334155; color: #cbd5e1; }
+    .box.process { background: #1e3a5f; color: #93c5fd; }
+    .box.output { background: #14532d; color: #86efac; }
+    .arrow { color: #64748b; font-size: 1.2rem; }
+    .angle-wrap {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin: 0.5rem 0;
+      padding: 0.5rem;
+      background: #0f172a;
+      border-radius: 6px;
+      font-family: monospace;
+    }
+    .angle-wrap span { color: #fbbf24; }
+    .viz-mini {
+      width: 100%;
+      max-width: 320px;
+      height: 180px;
+      background: #0f172a;
+      border-radius: 8px;
+      margin: 0.75rem 0;
+      position: relative;
+    }
+    .viz-mini canvas { display: block; border-radius: 8px; width: 100%; height: 100%; }
+    ul.compact { margin: 0.25rem 0; padding-left: 1.25rem; }
+    ul.compact li { margin: 0.2rem 0; }
+    table.controls { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    table.controls th, table.controls td { padding: 0.4rem 0.6rem; text-align: left; border-bottom: 1px solid #334155; }
+    table.controls th { color: #94a3b8; font-weight: 600; }
+    .badge { display: inline-block; padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.75rem; }
+    .badge.red { background: #7f1d1d; color: #fca5a5; }
+    .badge.blue { background: #1e3a8a; color: #93c5fd; }
+    .badge.green { background: #14532d; color: #86efac; }
+    .badge.purple { background: #581c87; color: #e9d5ff; }
+  </style>
+</head>
+<body>
+  <h1>FTC Robot Capabilities Overview</h1>
+  <p class="subtitle">MainDrive + Turret, Launcher, AirSort, Vision — logic and data flow</p>
+
+  <section>
+    <h2>System overview</h2>
+    <div class="flow-row">
+      <span class="box input">Pose (Pinpoint)</span>
+      <span class="arrow">→</span>
+      <span class="box process">Turret aim</span>
+      <span class="arrow">→</span>
+      <span class="box output">Field angle [−180°, 180°)</span>
+    </div>
+    <div class="flow-row">
+      <span class="box input">Distance (odom / camera)</span>
+      <span class="arrow">→</span>
+      <span class="box process">Regression / AirSort</span>
+      <span class="arrow">→</span>
+      <span class="box output">Hood + flywheel</span>
+    </div>
+    <div class="flow-row">
+      <span class="box input">AprilTag 21/22/23</span>
+      <span class="arrow">→</span>
+      <span class="box process">Motif (stored once)</span>
+      <span class="arrow">+</span>
+      <span class="box input">c3 (launcher)</span>
+      <span class="arrow">→</span>
+      <span class="box output">Fast or slow shot</span>
+    </div>
+  </section>
+
+  <section class="turret">
+    <h2>Turret wrap (robot-centric [−180°, 180°)</h2>
+    <p>Target and current angle are kept in [−180°, 180°). The controller picks the <strong>nearest equivalent</strong> target in ticks so the turret always rotates the short way and does not spin past ±180° (avoids wire tangling).</p>
+    <div class="angle-wrap">
+      Robot-centric angle: <span>−180° ≤ θ &lt; 180°</span> → shortest path
+    </div>
+    <div class="viz-mini" id="turret-viz">
+      <canvas id="turret-canvas" width="320" height="180"></canvas>
+    </div>
+    <p style="font-size:0.85rem; color:#94a3b8;">Diagram: turret at 170° (green); target −170° (orange) → moves 20° the other way (yellow arc), not 340°.</p>
+  </section>
+
+  <section class="launcher">
+    <h2>Velocity compensation</h2>
+    <p>Virtual goal = goal − velocity × (gain × timeOfFlight). When moving backward, virtual goal is farther than the real goal; when moving sideways, aim is shifted opposite to velocity so the note still lands at the goal.</p>
+    <div class="viz-mini" id="velcomp-viz">
+      <canvas id="velcomp-canvas" width="320" height="180"></canvas>
+    </div>
+    <p style="font-size:0.85rem; color:#94a3b8;">Green = goal, orange = virtual goal (when moving), yellow = aim line.</p>
+  </section>
+
+  <section class="airsort">
+    <h2>AirSort flow</h2>
+    <ul class="compact">
+      <li><strong>Toggle:</strong> Operator Back → AirSort on/off; index resets to 0 when turned on.</li>
+      <li><strong>Motif:</strong> AprilTag 21 → G,P,P; 22 → P,G,P; 23 → P,P,G. Stored once.</li>
+      <li><strong>Ball at launcher:</strong> c3 only (green / purple / unknown).</li>
+      <li><strong>Shot:</strong> desired = motif[shotIndex]. Match → fast shot (min T); no match → slow shot (max T).</li>
+      <li><strong>Advance:</strong> When ball leaves launcher (c3 empty), schedule advance in 250 ms (tunable), then index 0→1→2.</li>
+    </ul>
+    <div class="flow-row" style="margin-top:0.75rem;">
+      <span class="badge green">Tag 21</span>
+      <span class="badge purple">Tag 22</span>
+      <span class="badge purple">Tag 23</span>
+      <span class="arrow">⇒</span>
+      <span class="box process">Motif [G,P,P]</span>
+      <span class="arrow">+</span>
+      <span class="box input">c3=green, index=0</span>
+      <span class="arrow">⇒</span>
+      <span class="box output">Fast shot</span>
+    </div>
+  </section>
+
+  <section class="vision">
+    <h2>Vision &amp; AprilTag</h2>
+    <ul class="compact">
+      <li><strong>Goal (20, 24):</strong> Lock-on turret track, camera distance (12–200 in), optional reloc (blue 20), rumble when aimed.</li>
+      <li><strong>Obelisk (21, 22, 23):</strong> AirSort motif only; decimation 2 when AirSort on.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Controls (quick reference)</h2>
+    <table class="controls">
+      <tr><th>Gamepad</th><th>Control</th><th>Action</th></tr>
+      <tr><td>Driver 1</td><td>Left stick</td><td>Drive (robot-centric)</td></tr>
+      <tr><td>Driver 1</td><td>Right stick X</td><td>Rotate</td></tr>
+      <tr><td>Driver 1</td><td>Dpad L/R</td><td>Alliance Blue / Red</td></tr>
+      <tr><td>Driver 1</td><td>Start</td><td>Re-zero IMU (stationary)</td></tr>
+      <tr><td>Operator 2</td><td>Left trigger</td><td>Spin flywheel</td></tr>
+      <tr><td>Operator 2</td><td>Right trigger</td><td>Feed when at speed</td></tr>
+      <tr><td>Operator 2</td><td>Back</td><td>AirSort on/off</td></tr>
+      <tr><td>Operator 2</td><td>Y / B</td><td>Lock-on / Lock-off</td></tr>
+      <tr><td>Operator 2</td><td>Dpad Up/Down</td><td>Turret 0° / 180°</td></tr>
+      <tr><td>Operator 2</td><td>Left stick X</td><td>Turret nudge</td></tr>
+    </table>
+  </section>
+
+  <script>
+    (function() {
+      // Turret wrap viz: circle with current 170° and target -170°, show short arc
+      var c = document.getElementById('turret-canvas');
+      if (!c) return;
+      var ctx = c.getContext('2d');
+      var w = c.width, h = c.height, cx = w/2, cy = h/2, r = Math.min(w,h)/2 - 16;
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(0, 0, w, h);
+      ctx.strokeStyle = '#334155';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI*2);
+      ctx.stroke();
+      // -180° = left; 0° = right; angles math: 0 = +X (right), CCW positive → draw with 0 at right, 90 at top
+      function degToXY(deg) {
+        var rad = (deg - 90) * Math.PI / 180;
+        return { x: cx + r * Math.cos(rad), y: cy - r * Math.sin(rad) };
+      }
+      var cur = degToXY(170), tgt = degToXY(-170);
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cur.x, cur.y);
+      ctx.stroke();
+      ctx.fillStyle = '#22c55e';
+      ctx.beginPath();
+      ctx.arc(cur.x, cur.y, 6, 0, Math.PI*2);
+      ctx.fill();
+      ctx.fillStyle = '#f59e0b';
+      ctx.beginPath();
+      ctx.arc(tgt.x, tgt.y, 6, 0, Math.PI*2);
+      ctx.fill();
+      // Short arc from 170° to -170° (over top: 80° to 100° in canvas, 20° CCW)
+      ctx.strokeStyle = '#eab308';
+      ctx.lineWidth = 2;
+      var startRad = (170 - 90) * Math.PI / 180;
+      var endRad = (360 - 170 - 90) * Math.PI / 180;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r*0.7, startRad, endRad, true);
+      ctx.stroke();
+      ctx.fillStyle = '#e2e4e8';
+      ctx.font = '11px sans-serif';
+      ctx.fillText('170°', cur.x + 8, cur.y);
+      ctx.fillText('-170°', tgt.x - 32, tgt.y);
+    })();
+
+    (function() {
+      // Velocity comp: robot, goal, virtual goal (offset when moving)
+      var c = document.getElementById('velcomp-canvas');
+      if (!c) return;
+      var ctx = c.getContext('2d');
+      var w = c.width, h = c.height;
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(0, 0, w, h);
+      var robot = { x: w*0.2, y: h*0.5 };
+      var goal = { x: w*0.75, y: h*0.35 };
+      var virtual = { x: w*0.82, y: h*0.28 };
+      ctx.strokeStyle = '#4ade80';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(goal.x, goal.y, 10, 0, Math.PI*2);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(74, 222, 128, 0.3)';
+      ctx.fill();
+      ctx.strokeStyle = '#fb923c';
+      ctx.beginPath();
+      ctx.arc(virtual.x, virtual.y, 8, 0, Math.PI*2);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(251, 146, 60, 0.3)';
+      ctx.fill();
+      ctx.strokeStyle = '#facc15';
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(robot.x, robot.y);
+      ctx.lineTo(virtual.x, virtual.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#3b82f6';
+      ctx.beginPath();
+      ctx.arc(robot.x, robot.y, 12, 0, Math.PI*2);
+      ctx.fill();
+      ctx.fillStyle = '#e2e4e8';
+      ctx.font = '10px sans-serif';
+      ctx.fillText('Robot', robot.x - 18, robot.y + 22);
+      ctx.fillText('Goal', goal.x + 12, goal.y);
+      ctx.fillText('Virtual (moving)', virtual.x - 12, virtual.y - 12);
+    })();
+  </script>
+</body>
+</html>

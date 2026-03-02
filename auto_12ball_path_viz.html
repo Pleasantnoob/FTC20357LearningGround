@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Auto 12-Ball Path — FTC Field (Editable)</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; margin: 12px; background: #1a1a2e; color: #eee; }
+    h1 { font-size: 1.2rem; margin-bottom: 6px; }
+    .info { font-size: 0.85rem; color: #aaa; margin-bottom: 10px; }
+    #canvas { display: block; background: #16213e; border-radius: 8px; cursor: crosshair; }
+    .layout { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+    .panel { background: #16213e; border-radius: 8px; padding: 14px; min-width: 260px; }
+    .panel h3 { margin: 0 0 10px; font-size: 0.95rem; color: #81C784; }
+    .panel label { display: block; font-size: 0.8rem; color: #aaa; margin-bottom: 2px; }
+    .panel input { width: 100%; padding: 6px 8px; margin-bottom: 10px; border-radius: 4px; border: 1px solid #37474f; background: #0f1624; color: #eee; font-family: monospace; }
+    .row { display: flex; gap: 8px; }
+    .row input { flex: 1; }
+    .legend { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 12px 20px; font-size: 0.85rem; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .legend .dot { width: 10px; height: 10px; border-radius: 50%; }
+    .legend .line { width: 24px; height: 3px; border-radius: 1px; }
+    .export-panel { margin-top: 12px; }
+    .export-panel textarea { width: 100%; min-height: 140px; font-family: monospace; font-size: 11px; padding: 8px; border-radius: 4px; border: 1px solid #37474f; background: #0f1624; color: #ddd; resize: vertical; }
+    .export-panel button { margin-top: 8px; padding: 10px 16px; background: #4CAF50; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
+    .export-panel button:hover { background: #66BB6A; }
+  </style>
+</head>
+<body>
+  <h1>Auto 12-Ball (Blue) — Path visualization (Editable)</h1>
+  <p class="info">Field 144″ × 144″. Drag waypoints on the canvas or edit values in the panel. Export and paste the block back to update Auto12Ball.java.</p>
+
+  <div class="layout">
+    <div>
+      <canvas id="canvas" width="720" height="720"></canvas>
+      <div class="legend">
+        <span><i class="dot" style="background:#4CAF50"></i> Start</span>
+        <span><i class="dot" style="background:#2196F3"></i> Shoot</span>
+        <span><i class="dot" style="background:#FF9800"></i> Spike 1/2/3</span>
+        <span><i class="dot" style="background:#F44336"></i> Goal</span>
+        <span><i class="line" style="background:#81C784"></i> To shoot</span>
+        <span><i class="line" style="background:#64B5F6"></i> To spike</span>
+        <span><i class="line" style="background:#FFB74D"></i> Back to shoot</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Waypoints</h3>
+      <div id="inputs"></div>
+      <div class="export-panel">
+        <h3>Export for Auto12Ball.java</h3>
+        <textarea id="export" readonly placeholder="Adjust waypoints, then click Copy. Paste this block into your next message to update the Java constants."></textarea>
+        <button id="copyBtn">Copy to clipboard</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      const FIELD_IN = 144;
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
+      const width = canvas.width;
+      const height = canvas.height;
+      const padding = 36;
+      const scale = Math.min((width - 2 * padding) / FIELD_IN, (height - 2 * padding) / FIELD_IN);
+      const cx = width / 2;
+      const cy = height / 2;
+      const SPIKE_OFFSET = 15; // mid waypoint = end Y - 15
+
+      function toScreen(xIn, yIn) {
+        return { x: cx + xIn * scale, y: cy - yIn * scale };
+      }
+      function fromScreen(sx, sy) {
+        return { x: (sx - cx) / scale, y: (cy - sy) / scale };
+      }
+
+      // Editable waypoints (shared refs)
+      const START = { x: -55, y: -47, headingDeg: -130 };
+      const GOAL = { x: -70, y: -64 };
+      const SHOOT = { x: 38, y: -52, headingDeg: 180 };
+      const SPIKE1_END = { x: -12, y: -53 };
+      const SPIKE2_END = { x: 12, y: -53 };
+      const SPIKE3_END = { x: 30, y: -55 };
+
+      function getSpikeMid(end) {
+        return { x: end.x, y: end.y - SPIKE_OFFSET };
+      }
+
+      function buildPathSegments() {
+        const s1m = getSpikeMid(SPIKE1_END), s2m = getSpikeMid(SPIKE2_END), s3m = getSpikeMid(SPIKE3_END);
+        return [
+          { label: 'To shoot', points: [START, SHOOT], color: '#81C784', width: 2.5 },
+          { label: 'To spike 1', points: [SHOOT, s1m, SPIKE1_END], color: '#64B5F6', width: 2 },
+          { label: 'Back shoot', points: [SPIKE1_END, SHOOT], color: '#FFB74D', width: 2 },
+          { label: 'To spike 2', points: [SHOOT, s2m, SPIKE2_END], color: '#64B5F6', width: 2 },
+          { label: 'Back shoot', points: [SPIKE2_END, SHOOT], color: '#FFB74D', width: 2 },
+          { label: 'To spike 3', points: [SHOOT, s3m, SPIKE3_END], color: '#64B5F6', width: 2 },
+          { label: 'Back shoot', points: [SPIKE3_END, SHOOT], color: '#FFB74D', width: 2 },
+        ];
+      }
+
+      function drawField() {
+        ctx.fillStyle = '#16213e';
+        ctx.fillRect(0, 0, width, height);
+        const left = toScreen(-FIELD_IN/2, FIELD_IN/2).x;
+        const top = toScreen(-FIELD_IN/2, FIELD_IN/2).y;
+        const size = FIELD_IN * scale;
+        ctx.strokeStyle = '#37474f';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(left, top, size, size);
+        ctx.strokeStyle = '#263238';
+        ctx.lineWidth = 1;
+        for (let i = -72; i <= 72; i += 24) {
+          const p = toScreen(i, 72);
+          ctx.beginPath();
+          ctx.moveTo(p.x, top);
+          ctx.lineTo(p.x, top + size);
+          ctx.stroke();
+          const q = toScreen(-72, i);
+          ctx.beginPath();
+          ctx.moveTo(left, q.y);
+          ctx.lineTo(left + size, q.y);
+          ctx.stroke();
+        }
+      }
+
+      function drawPath() {
+        buildPathSegments().forEach(seg => {
+          if (seg.points.length < 2) return;
+          ctx.strokeStyle = seg.color;
+          ctx.lineWidth = seg.width;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.beginPath();
+          const a = toScreen(seg.points[0].x, seg.points[0].y);
+          ctx.moveTo(a.x, a.y);
+          for (let i = 1; i < seg.points.length; i++) {
+            const b = toScreen(seg.points[i].x, seg.points[i].y);
+            ctx.lineTo(b.x, b.y);
+          }
+          ctx.stroke();
+        });
+      }
+
+      function drawWaypoint(pt, color, label, showHeading) {
+        const c = toScreen(pt.x, pt.y);
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        if (label) {
+          ctx.fillStyle = '#fff';
+          ctx.font = '10px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(label, c.x, c.y - 12);
+        }
+        if (showHeading && pt.headingDeg != null) {
+          const rad = (pt.headingDeg * Math.PI) / 180;
+          const len = 14;
+          const ex = c.x + len * Math.cos(-rad);
+          const ey = c.y + len * Math.sin(-rad);
+          ctx.strokeStyle = '#fff';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(c.x, c.y);
+          ctx.lineTo(ex, ey);
+          ctx.stroke();
+        }
+      }
+
+      const waypoints = [
+        { pt: START, color: '#4CAF50', label: 'Start', showHeading: true },
+        { pt: SHOOT, color: '#2196F3', label: 'Shoot', showHeading: true },
+        { pt: GOAL, color: '#F44336', label: 'Goal', showHeading: false },
+        { pt: SPIKE1_END, color: '#FF9800', label: 'Spike 1', showHeading: false },
+        { pt: SPIKE2_END, color: '#FF9800', label: 'Spike 2', showHeading: false },
+        { pt: SPIKE3_END, color: '#FF9800', label: 'Spike 3', showHeading: false },
+      ];
+      const HIT_RADIUS = 14;
+
+      function hitTest(sx, sy) {
+        for (const w of waypoints) {
+          const c = toScreen(w.pt.x, w.pt.y);
+          const d = Math.hypot(sx - c.x, sy - c.y);
+          if (d <= HIT_RADIUS) return w;
+        }
+        return null;
+      }
+
+      function draw() {
+        drawField();
+        drawPath();
+        waypoints.forEach(w => drawWaypoint(w.pt, w.color, w.label, w.showHeading));
+      }
+
+      // ---- Inputs and sync ----
+      const inputsDiv = document.getElementById('inputs');
+      const fields = [
+        { key: 'START', pt: START, labels: ['X', 'Y', 'Heading°'] },
+        { key: 'SHOOT', pt: SHOOT, labels: ['X', 'Y', 'Heading°'] },
+        { key: 'GOAL', pt: GOAL, labels: ['X', 'Y'] },
+        { key: 'SPIKE1', pt: SPIKE1_END, labels: ['X', 'Y'] },
+        { key: 'SPIKE2', pt: SPIKE2_END, labels: ['X', 'Y'] },
+        { key: 'SPIKE3', pt: SPIKE3_END, labels: ['X', 'Y'] },
+      ];
+
+      function createInputs() {
+        inputsDiv.innerHTML = '';
+        fields.forEach(f => {
+          const sec = document.createElement('div');
+          sec.innerHTML = `<label>${f.key}</label>`;
+          const row = document.createElement('div');
+          row.className = 'row';
+          f.fields = [];
+          f.labels.forEach((lbl, i) => {
+            const inp = document.createElement('input');
+            inp.type = 'number';
+            inp.step = 0.5;
+            inp.placeholder = lbl;
+            inp.dataset.key = f.key;
+            inp.dataset.prop = f.pt.headingDeg != null && i === 2 ? 'headingDeg' : (i === 0 ? 'x' : 'y');
+            inp.value = f.pt.headingDeg != null && i === 2 ? f.pt.headingDeg : (i === 0 ? f.pt.x : f.pt.y);
+            inp.addEventListener('input', () => {
+              const v = parseFloat(inp.value);
+              if (!isNaN(v)) {
+                f.pt[inp.dataset.prop] = v;
+                draw();
+                updateExport();
+              }
+            });
+            f.fields.push(inp);
+            row.appendChild(inp);
+          });
+          sec.appendChild(row);
+          inputsDiv.appendChild(sec);
+        });
+      }
+
+      function syncInputsFromData() {
+        fields.forEach(f => {
+          f.labels.forEach((lbl, i) => {
+            const prop = f.pt.headingDeg != null && i === 2 ? 'headingDeg' : (i === 0 ? 'x' : 'y');
+            f.fields[i].value = f.pt[prop];
+          });
+        });
+      }
+
+      function updateExport() {
+        const fmt = n => Number(n).toFixed(1);
+        document.getElementById('export').value =
+`/** Replace constants in Auto12Ball.java with these values: */
+private static final double GOAL_X = ${fmt(GOAL.x)};
+private static final double GOAL_Y = ${fmt(GOAL.y)};
+private static final double START_X = ${fmt(START.x)};
+private static final double START_Y = ${fmt(START.y)};
+private static final double START_HEADING_RAD = Math.toRadians(${fmt(START.headingDeg)});
+private static final double SHOOT_X = ${fmt(SHOOT.x)};
+private static final double SHOOT_Y = ${fmt(SHOOT.y)};
+private static final double SHOOT_HEADING_RAD = Math.toRadians(${fmt(SHOOT.headingDeg)});
+private static final double SPIKE1_X = ${fmt(SPIKE1_END.x)}, SPIKE1_Y_END = ${fmt(SPIKE1_END.y)};
+private static final double SPIKE2_X = ${fmt(SPIKE2_END.x)}, SPIKE2_Y_END = ${fmt(SPIKE2_END.y)};
+private static final double SPIKE3_X = ${fmt(SPIKE3_END.x)}, SPIKE3_Y_END = ${fmt(SPIKE3_END.y)};`;
+      }
+
+      document.getElementById('copyBtn').addEventListener('click', () => {
+        const ta = document.getElementById('export');
+        ta.select();
+        navigator.clipboard.writeText(ta.value).then(() => {
+          document.getElementById('copyBtn').textContent = 'Copied!';
+          setTimeout(() => { document.getElementById('copyBtn').textContent = 'Copy to clipboard'; }, 1500);
+        });
+      });
+
+      // ---- Dragging ----
+      let dragging = null;
+      canvas.addEventListener('mousedown', e => {
+        const r = canvas.getBoundingClientRect();
+        const sx = e.clientX - r.left, sy = e.clientY - r.top;
+        dragging = hitTest(sx, sy);
+      });
+      canvas.addEventListener('mousemove', e => {
+        if (!dragging) return;
+        const r = canvas.getBoundingClientRect();
+        const { x, y } = fromScreen(e.clientX - r.left, e.clientY - r.top);
+        dragging.pt.x = Math.round(x * 2) / 2;
+        dragging.pt.y = Math.round(y * 2) / 2;
+        syncInputsFromData();
+        draw();
+        updateExport();
+      });
+      canvas.addEventListener('mouseup', () => { dragging = null; });
+      canvas.addEventListener('mouseleave', () => { dragging = null; });
+
+      createInputs();
+      updateExport();
+      draw();
+    })();
+  </script>
+</body>
+</html>
