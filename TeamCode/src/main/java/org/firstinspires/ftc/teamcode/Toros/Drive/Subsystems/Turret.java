@@ -21,7 +21,8 @@ import org.firstinspires.ftc.teamcode.RR.PinpointLocalizer;
  *   - TICKS_PER_MOTOR_REV: encoder ticks per one full rotation of the motor shaft (384.5 for the motor used).
  *   - GEAR_RATIO: output rotation / motor rotation (2/5 means turret rotates 2/5 of a full turn per motor revolution).
  *
- * Target is the turret's field angle (set to angle to goal = line robot→goal). No shortest-path wrap: targetPos = (targetAngle - botHeading) * ticksPerDeg.
+ * Target is the turret's field angle (set to angle to goal = line robot→goal). When robot-relative angle exceeds ±wrapLimitDeg,
+ * the encoder is reset via setCurrentPosition to the wrapped equivalent so the turret stays in [-180, 180] and wires don't tangle.
  * At init: encoder 0 → turret output 0 → turret field angle = robot heading (turret same as robot). So robot at 90° → turret at 90° field, 0° relative to robot.
  * When on target, curAng (turret field angle) should match tgtAng (angle to goal).
  */
@@ -95,6 +96,9 @@ public class Turret {
     /** Ticks per degree of turret output rotation. */
     private static final double TICKS_PER_DEG = (TICKS_PER_MOTOR_REV / 360.0) * INV_GEAR_RATIO;
 
+    /** Robot-relative angle limits (deg). When exceeded, encoder is wrapped via setCurrentPosition to prevent wire tangling. */
+    public static double wrapLimitDeg = 180.0;
+
     /** Nudge sensitivity: degrees per unit of left_stick_x. Adjust target when stick pushed to correct drift/gear skip. */
     public static double nudgeDegPerUnit = 4.0;
 
@@ -124,20 +128,23 @@ public class Turret {
         double ticks = turretMotor.getCurrentPosition();
         double rawOutputDeg = (ticks / TICKS_PER_MOTOR_REV) * 360.0 * GEAR_RATIO;
         motorPosition = ticks;
-        // Robot-centric angle in [-180, 180] so turret wraps / takes shortest path
+
+        // Wrap-around: use wrapped position for PID so turret stays in [-180, 180] and avoids wire tangling.
+        // FTC DcMotorEx has no setCurrentPosition; we use virtual wrapped ticks for the controller.
         outputDeg = wrapDeg180(rawOutputDeg);
+        double wrappedTicks = outputDeg * TICKS_PER_DEG;
         // Field angle: botHeading - robot-relative (use raw for consistent field angle)
         currentAngle = wrapDeg360(botHeading - rawOutputDeg);
 
-        // Robot-relative target in [-180, 180]; then nearest equivalent for shortest path
+        // Robot-relative target in [-180, 180]; pick nearest equivalent for shortest path
         targetOutputDeg = wrapDeg180(botHeading - targetAngle);
-        double revs = (rawOutputDeg - targetOutputDeg) / 360.0;
+        double revs = (outputDeg - targetOutputDeg) / 360.0;
         double k = Math.round(revs);
         targetPos = (targetOutputDeg + 360.0 * k) * TICKS_PER_DEG;
 
         SimpleMotorFeedforward feedforward = new SimpleMotorFeedforward(kS, kV, kA);
         controller.setPID(p1, i1, d1);
-        double pid2 = controller.calculate(ticks, targetPos);
+        double pid2 = controller.calculate(wrappedTicks, targetPos);
         double ff = feedforward.calculate(0);
         power = pid2 + ff;
         turretMotor.setPower(turretDriveEnabled ? power : 0);
@@ -164,18 +171,21 @@ public class Turret {
     public void runTurretNoGyro(double k) {
         double ticks = turretMotor.getCurrentPosition();
         double rawOutputDeg = (ticks / TICKS_PER_MOTOR_REV) * 360.0 * GEAR_RATIO;
-        outputDeg = wrapDeg180(rawOutputDeg);
-        currentAngle = wrapDeg360(rawOutputDeg + k);
         motorPosition = ticks;
 
+        // Wrap-around: use wrapped position for PID (same as runTurretGyro)
+        outputDeg = wrapDeg180(rawOutputDeg);
+        double wrappedTicks = outputDeg * TICKS_PER_DEG;
+        currentAngle = wrapDeg360(rawOutputDeg + k);
+
         targetOutputDeg = wrapDeg180(targetAngle - k);
-        double revs = (rawOutputDeg - targetOutputDeg) / 360.0;
+        double revs = (outputDeg - targetOutputDeg) / 360.0;
         double kRev = Math.round(revs);
         targetPos = (targetOutputDeg + 360.0 * kRev) * TICKS_PER_DEG;
 
         SimpleMotorFeedforward feedforward = new SimpleMotorFeedforward(kS, kV, kA);
         controller.setPID(p1, i1, d1);
-        double pid2 = controller.calculate(ticks, targetPos);
+        double pid2 = controller.calculate(wrappedTicks, targetPos);
         double ff = feedforward.calculate(0);
         power = pid2 + ff;
         turretMotor.setPower(turretDriveEnabled ? power : 0);
@@ -194,7 +204,8 @@ public class Turret {
 
     /** Sets the target turret angle in field frame (degrees). */
     public void setAngle(double target) {
-        targetAngle = (int) target;
+        // Keep full precision; callers expect this to be continuous (e.g. lock-on and fine aiming).
+        targetAngle = wrapDeg360(target);
     }
 
     /** Returns current turret angle in field frame (degrees), [0, 360). */

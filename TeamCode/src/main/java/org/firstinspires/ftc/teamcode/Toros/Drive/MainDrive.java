@@ -555,18 +555,19 @@ public class MainDrive extends LinearOpMode {
                 gamepad2.rumble(500);
             }
 
-            // Lock-on: adjust turret target so it tracks the AprilTag. Bearing = angle from camera to tag.
+            // Lock-on: adjust turret target so it tracks the AprilTag. Bearing = degrees from camera center to tag.
             if (detection.metadata != null && lockedOn && (detection.id == 20 || detection.id == 24)) {
-                double error = detection.ftcPose.bearing; // degrees: positive = tag left of center
-
-                if (error > 5) {
-                    turret.setAngle(turret.getTurretAngle() - error * 0.5);
-                }
-                if (error < -5) {
-                    turret.setAngle(turret.getTurretAngle() + error * -0.5);
-                }
-                if (Math.abs(error) <= 2) {
-                    turret.setAngle(turret.getTurretAngle());  // hold when on target (was *1.01 causing drift)
+                double error = detection.ftcPose.bearing; // positive = tag left of center
+                final double deadbandDeg = 1.5;
+                final double gain = 0.6;
+                final double maxStepDeg = 8.0;
+                if (Math.abs(error) > deadbandDeg) {
+                    double step = -error * gain; // negate: tag left → turret turn left (target decrease in field frame)
+                    if (step > maxStepDeg) step = maxStepDeg;
+                    if (step < -maxStepDeg) step = -maxStepDeg;
+                    turret.setAngle(turret.targetAngle + step);
+                } else {
+                    turret.setAngle(turret.targetAngle); // hold when on target
                 }
             }
         }
