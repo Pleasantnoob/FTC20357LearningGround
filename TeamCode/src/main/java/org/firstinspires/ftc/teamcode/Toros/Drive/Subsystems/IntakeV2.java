@@ -207,7 +207,7 @@ public class IntakeV2 {
             trans.setPower(0);
         }
         if (gamepad1.left_bumper) {
-            trans.setPower(-0.35);
+            trans.setPower(0.35);
         }
     }
     public double getLauncherSpeed() {

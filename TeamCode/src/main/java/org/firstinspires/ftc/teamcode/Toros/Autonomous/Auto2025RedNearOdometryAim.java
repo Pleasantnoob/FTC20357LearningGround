@@ -261,7 +261,7 @@ public class Auto2025RedNearOdometryAim extends LinearOpMode {
         Pose2d initialPose = new Pose2d(-48, 50, Math.toRadians(90));
         MecanumDrive drive = new MecanumDrive(hardwareMap, initialPose);
         Launcher launcher = new Launcher(hardwareMap);
-        Intake intake = new Intake(hardwareMap);
+        Intake intakeSub = new Intake(hardwareMap);
         Turret turret = new Turret(hardwareMap, gamepad2);
 
         telemetry.addData(">", "Red Near Odometry Aim Test: same paths & shoot times, turret aims at goal whole time");
@@ -301,14 +301,14 @@ public class Auto2025RedNearOdometryAim extends LinearOpMode {
         Action mainSequence = new SequentialAction(
                 tab1,
                 launcher.fireBallPre(),
-                new ParallelAction(tab2, intake.intakeRun(), intake.transRun()),
+                new ParallelAction(tab2, intakeSub.intakeRun(), intakeSub.transRun()),
                 tab3,
                 launcher.fireBall(),
                 new ParallelAction(
                         tab4,
                         new SequentialAction(
                                 new SleepAction(1.1),
-                                new ParallelAction(intake.intakeRun(), intake.transRun())
+                                new ParallelAction(intakeSub.intakeRun(), intakeSub.transRun())
                         )
                 ),
                 tab5,
@@ -317,7 +317,7 @@ public class Auto2025RedNearOdometryAim extends LinearOpMode {
                         tab6,
                         new SequentialAction(
                                 new SleepAction(2.1),
-                                new ParallelAction(intake.intakeRun(), intake.transRun())
+                                new ParallelAction(intakeSub.intakeRun(), intakeSub.transRun())
                         )
                 ),
                 tab7,
