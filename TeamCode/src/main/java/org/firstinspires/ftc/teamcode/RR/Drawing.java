@@ -6,7 +6,10 @@ import com.acmerobotics.roadrunner.Vector2d;
 
 import java.util.List;
 
-/** Field overlay drawing used by MainDrive Dashboard. */
+/**
+ * Field overlay drawing for FTC Dashboard. All coordinates in field inches (origin center, +X right, +Y away from red).
+ * Used by MainDrive to show robot pose, goal, zones, aim line, and pose history.
+ */
 public final class Drawing {
     private Drawing() {}
 

@@ -64,7 +64,7 @@ public class IntakeV2 {
     public IntakeV2(HardwareMap hardwareMap, Gamepad gamepad, Gamepad gamepadA, AprilTagProcessor aprilTag) {
         gamepad1 = gamepad;
         gamepad2 = gamepadA;
-        intakeMotor = hardwareMap.get(DcMotorEx.class, " intake");
+        intakeMotor = hardwareMap.get(DcMotorEx.class, "intake");
         intakeMotor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         hood = hardwareMap.get(Servo.class,("hood"));
         hood.setDirection(Servo.Direction.FORWARD);
@@ -86,11 +86,10 @@ public class IntakeV2 {
     double hoodAngle = 0;
     public static double heading;
 
+    /** Launcher control: hood + flywheel target from preset, manual, AirSort, or odometry regression. Left trigger = spin; right trigger = feed when at speed. */
     public void runLauncher() {
-        vel = Math.sqrt(Math.pow(pinpoint.getVelx(),2)+ Math.pow(pinpoint.getVelY(),2));
+        vel = Math.hypot(pinpoint.getVelx(), pinpoint.getVelY());
         heading = pinpoint.getHeading();
-                //targetVel = -1* calcLaunch(0);
-        //double ff = Math.cos(Math.toRadians(targetVel /ticks_in_degrees)) * f1;
             if (gamepad2.left_bumper) {
                 targetVel = -1480;
                 hood.setPosition(0.8);
@@ -138,8 +137,8 @@ public class IntakeV2 {
             }
 
             if (gamepad2.right_trigger > 0.1) {
+                // Only feed when flywheel is at target (within tolerance) so note exits at correct speed
                 if (Math.abs(launch.getVelocity() - targetVel) <= SHOOT_VEL_TOLERANCE) {
-                    // Feed to launcher: both transfer and intake at full power (direction for feed)
                     trans.setPower(-1.0);
                     intakeMotor.setPower(-1.0);
                 } else {
@@ -183,14 +182,27 @@ public class IntakeV2 {
         // Hood is set only in runLauncher() (manual or auto from distance). Do not overwrite here or it jitters.
         }
 
+    /** Min RGB sum at c3 to consider "ball at launcher" (stop transfer during intake so we don't double-feed). */
+    private static final int BALL_AT_LAUNCHER_RGB = 80;
+
+    /**
+     * Transfer belt. Gamepad2 right trigger = shoot (runLauncher owns trans; we return). Gamepad1 right trigger = intake:
+     * run transfer at 0.15 until a ball is sensed at c3, then 0 (intake keeps running). Gamepad1 right/left bumper = manual transfer.
+     */
     public void transfer() {
-        if (gamepad2.right_trigger > 0.1) {
-            return; // Launcher feed owns trans in runLauncher(); don't overwrite
+        if (gamepad2.right_trigger > 0.1) return;  // Shooting: runLauncher() sets trans + intake to full; don't overwrite
+
+        // Gamepad1 right trigger (intake): transfer runs slow until ball reaches launcher (c3), then stop transfer so intake stays clear
+        if (gamepad1.right_trigger > 0.25) {
+            boolean ballAtLauncher = (c3.red() + c3.green() + c3.blue()) >= BALL_AT_LAUNCHER_RGB;
+            trans.setPower(ballAtLauncher ? 0 : 0.15);
+            return;
         }
+
         if (gamepad1.right_bumper && c3.blue() > 150) {
-            trans.setPower(0.15);   // push up (was -0.15)
+            trans.setPower(0.15);
         } else if (gamepad1.right_bumper) {
-            trans.setPower(-0.35);  // push up (was 0.35, reversed)
+            trans.setPower(-0.35);
         } else {
             trans.setPower(0);
         }

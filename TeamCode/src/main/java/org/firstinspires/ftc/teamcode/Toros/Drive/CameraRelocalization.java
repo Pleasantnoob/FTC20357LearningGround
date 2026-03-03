@@ -66,7 +66,7 @@ public class CameraRelocalization {
         double xHorz = x;
         // (xHorz, yHorz) = camera→tag in robot horizontal plane (right, forward) in inches.
 
-        // --- 3. Rotate to field frame. Heading 0 = +X, CCW positive: forward = (cos(h), sin(h)), right = (-sin(h), cos(h)). ---
+        // --- 3. Rotate to field frame. RR convention: heading 0 = +X, CCW positive. Forward = (cos(h), sin(h)), right = (-sin(h), cos(h)). ---
         double c = Math.cos(robotHeadingRad);
         double s = Math.sin(robotHeadingRad);
         double fieldDx = -xHorz * s + yHorz * c;

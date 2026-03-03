@@ -203,7 +203,7 @@ public class Auto2025RedNearOdometryAim extends LinearOpMode {
         public Action intakeRun() { return new runIntake(); }
     }
 
-    /** Runs inner action but returns false when keepRunning returns false (so parallel ends with main sequence). */
+    /** Wraps an action (e.g. revMotor) and returns false when keepRunning is false. Lets the parallel finish when main sequence ends. */
     private class RunUntilFlagAction implements Action {
         private final Action inner;
         private final BooleanSupplier keepRunning;
@@ -270,7 +270,7 @@ public class Auto2025RedNearOdometryAim extends LinearOpMode {
 
         autoRunning = true;
 
-        // Same paths as Auto2025RedNear
+        // Paths and timings match Auto2025RedNear exactly: tab1 = to launch, fireBallPre (3s), tab2+intake, tab3, fireBall (1.5s), etc.
         Action tab1 = drive.actionBuilder(initialPose)
                 .strafeTo(new Vector2d(-13, 13), new TranslationalVelConstraint(15.0))
                 .build();
@@ -323,9 +323,10 @@ public class Auto2025RedNearOdometryAim extends LinearOpMode {
                 tab7,
                 launcher.fireBall(),
                 tab8,
-                new SetFlagAndEndAction()
+                new SetFlagAndEndAction()  // sets autoRunning=false so the two parallel actions (rev + turret) also stop
         );
 
+        // Three parallel threads: rev motor until auto ends, turret aims at red goal every tick, main sequence runs. All stop when mainSequence hits SetFlagAndEndAction.
         Actions.runBlocking(
                 new ParallelAction(
                         new RunUntilFlagAction(launcher.revMotor(), () -> autoRunning),

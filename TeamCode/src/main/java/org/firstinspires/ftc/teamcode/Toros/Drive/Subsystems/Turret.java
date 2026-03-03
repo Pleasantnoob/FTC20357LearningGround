@@ -129,14 +129,12 @@ public class Turret {
         double rawOutputDeg = (ticks / TICKS_PER_MOTOR_REV) * 360.0 * GEAR_RATIO;
         motorPosition = ticks;
 
-        // Wrap-around: use wrapped position for PID so turret stays in [-180, 180] and avoids wire tangling.
-        // FTC DcMotorEx has no setCurrentPosition; we use virtual wrapped ticks for the controller.
+        // Wrap output to [-180, 180] so PID runs on a bounded range; avoids continuous spin and wire tangling.
         outputDeg = wrapDeg180(rawOutputDeg);
         double wrappedTicks = outputDeg * TICKS_PER_DEG;
-        // Field angle: botHeading - robot-relative (use raw for consistent field angle)
-        currentAngle = wrapDeg360(botHeading - rawOutputDeg);
+        currentAngle = wrapDeg360(botHeading - rawOutputDeg);  // field angle = robot heading minus turret output
 
-        // Robot-relative target in [-180, 180]; pick nearest equivalent for shortest path
+        // Target in robot-relative; add 360*k so turret takes shortest path (nearest equivalent angle)
         targetOutputDeg = wrapDeg180(botHeading - targetAngle);
         double revs = (outputDeg - targetOutputDeg) / 360.0;
         double k = Math.round(revs);

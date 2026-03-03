@@ -125,6 +125,7 @@ public class AirSort {
     }
 
 
+    /** Classify ball at sensor: unknown (no ball), green, or purple. Green = G dominant over R and B; else purple. */
     private static String classifyColor(ColorSensor s) {
         int r = s.red();
         int g = s.green();

@@ -1,17 +1,17 @@
 package org.firstinspires.ftc.teamcode.Toros.Drive;
 
 /**
- * Shot physics for Dashboard: time in air and launch speed from distance and hood angle.
- * Uses same projectile model as IntakeV2 (launch height h, gravity g).
+ * Shot physics: time in air and launch speed from distance and hood angle.
+ * Projectile model: launch at height H, flat ground; same H and g as IntakeV2 for consistency.
  */
 public final class ShotPhysics {
     private static final double G = 9.81;
-    /** Launch height above target plane (m). Match IntakeV2.h if needed. */
+    /** Launch height above target plane (m). Must match IntakeV2 if used for feedforward. */
     private static final double H = 0.69;
 
     /**
-     * Required launch speed (m/s) for a shot at horizontal distance d (meters) and launch angle theta (radians).
-     * From: d = v*cos(theta)*t, 0 = v*sin(theta)*t - 0.5*g*t^2 + h => v = d*sqrt(g / (2*cos²(theta)*(d*tan(theta)-h))).
+     * Required launch speed (m/s) for a shot at horizontal distance d (m) and launch angle theta (rad).
+     * Derived from: range d = v*cos(θ)*t and 0 = v*sin(θ)*t - 0.5*g*t² + h. Eliminate t and solve for v.
      */
     public static double speedForShot(double distanceM, double thetaRad) {
         double cos = Math.cos(thetaRad);
@@ -39,14 +39,12 @@ public final class ShotPhysics {
     }
 
     /**
-     * From odometry distance to goal (inches), compute hood angle (deg) and launch speed (m/s).
-     * Uses same linear hood mapping as IntakeV2: closer = steeper (70°), farther = flatter (40°). Range 40–70°.
-     * Returns { hoodAngleDeg, speedMPS }. Distance clamped to valid range for physics.
+     * Hood angle (deg) and launch speed (m/s) from distance to goal (inches).
+     * Linear hood: 0.5 m → 70°, 1.5 m → 40° (closer = steeper). Distance clamped 0.3–3.5 m for valid physics.
      */
     public static double[] hoodAndSpeedFromDistanceInches(double distanceInches) {
         double dM = distanceInches * 0.0254;
         dM = Math.max(0.3, Math.min(3.5, dM));
-        // Linear: at 0.5 m use 70°, at 1.5 m use 40° (range 40–70)
         double hoodAngleDeg = 70.0 + (dM - 0.5) * (40.0 - 70.0) / 1.0;
         hoodAngleDeg = Math.max(40, Math.min(70, hoodAngleDeg));
         double theta = Math.toRadians(hoodAngleDeg);

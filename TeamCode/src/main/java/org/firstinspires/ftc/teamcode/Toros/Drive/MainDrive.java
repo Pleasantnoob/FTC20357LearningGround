@@ -13,7 +13,6 @@ import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.ColorSensor;
-import com.qualcomm.robotcore.hardware.LED;
 import com.qualcomm.robotcore.hardware.Servo;
 
 import org.firstinspires.ftc.robotcore.external.hardware.camera.BuiltinCameraDirection;
@@ -146,11 +145,9 @@ public class MainDrive extends LinearOpMode {
         telemetry = new MultipleTelemetry(telemetry, FtcDashboard.getInstance().getTelemetry());
 
 
-        //Constructs the systems and makes them objects allowing to use a method to run the system and allows for other methods to be used
+        // Bulk caching reduces USB traffic to expansion hubs and can improve loop time.
         allHubs = hardwareMap.getAll(LynxModule.class);
-        for(LynxModule hub: allHubs){
-            hub.setBulkCachingMode(LynxModule.BulkCachingMode.AUTO);
-        }
+        for (LynxModule hub : allHubs) hub.setBulkCachingMode(LynxModule.BulkCachingMode.AUTO);
         initAprilTag();
         drivetrain = new DriveTrain(hardwareMap, gamepad1);
         led = hardwareMap.get(Servo.class, "LED");
@@ -218,7 +215,7 @@ public class MainDrive extends LinearOpMode {
             Pose2d pose = mecanumDrive.localizer.getPose();
             distanceX = pose.position.x - goalX;
             distanceY = pose.position.y - goalY;
-            distance = Math.sqrt(distanceX * distanceX + distanceY * distanceY);
+            distance = Math.hypot(distanceX, distanceY);
 
             // Pose history for Dashboard path (localization viz)
             poseHistory.add(pose);
@@ -231,9 +228,9 @@ public class MainDrive extends LinearOpMode {
                 mecanumDrive.localizer.setPose(new Pose2d(pose.position.x, pose.position.y, 0));
             }
 
-            // --- 2. Turret: odometry aiming at goal (with optional velocity compensation). Field angles [0, 360). ---
+            // --- 2. Turret: field-relative aim at goal. Optional velocity comp moves aim point so note lands at goal while moving. ---
             turret.botHeading = Turret.wrapDeg360(Math.toDegrees(pose.heading.toDouble()));
-            // Robot velocity in field frame (in/s). RR robot frame: x=forward, y=left.
+            // Robot velocity in field frame (in/s). Road Runner robot frame: x=forward, y=left; rotate by heading to get world.
             Vector2d robotVel = driveVel.linearVel;
             double h = pose.heading.toDouble();
             double c = Math.cos(h), s = Math.sin(h);
@@ -268,13 +265,13 @@ public class MainDrive extends LinearOpMode {
             // Alliance can be changed during run: goal/start update (pose not reset)
             if (gamepad1.dpad_left) { mode = true; applyAllianceMode(); }
             else if (gamepad1.dpad_right) { mode = false; applyAllianceMode(); }
-            // --- 3. Close zone + artifacts + rumble + LED ---
+            // --- 3. Close launching zone: triangle (-72,72)→(0,0)→(-72,-72). Rumble + LED when in zone with 2+ artifacts. ---
             int artifactCount = countArtifacts();
             boolean inCloseTriangle = ShootingZones.isInCloseLaunchTriangle(pose.position.x, pose.position.y);
             boolean readyToShoot = inCloseTriangle && artifactCount >= 2;
-            if (readyToShoot && !prevReadyToShoot) gamepad2.rumble(closeZoneRumbleMs);
+            if (readyToShoot && !prevReadyToShoot) gamepad2.rumble(closeZoneRumbleMs);  // edge-triggered so we don't rumble every loop
             prevReadyToShoot = readyToShoot;
-            led.setPosition(readyToShoot ? ledPosReady : ledPosNormal);
+            led.setPosition(readyToShoot ? ledPosReady : ledPosNormal);  // GoBilda LED: PWM 0–1 maps to colors (tune per Product Insight #4)
             initTelemetry();
             telemetryAprilTag();
             getMotif();
@@ -307,7 +304,7 @@ public class MainDrive extends LinearOpMode {
             intake.runIntake();
             intake.transfer();
 
-            // --- 4. Camera relocalization + distance (same tag IDs as lock-on: 20, 24). ftcPose.range = meters ---
+            // --- 4. Vision: camera distance (tags 20/24) and optional relocalization. ftcPose.range is meters; we store inches. ---
             cameraPose = null;
             cameraDistanceInches = Double.NaN;
             double headingRad = pose.heading.toDouble();
@@ -495,8 +492,7 @@ public class MainDrive extends LinearOpMode {
         //visionPortal.setProcessorEnabled(aprilTag, true);
 
     }   // end method initAprilTag()
-    //Telemetry which is good for debugging and seeing how we preform
-    /** Sets start pose and goal from current alliance mode (red vs blue). */
+    /** Sets start pose and goal from current alliance mode (red vs blue). Called in init and when dpad L/R pressed. */
     private void applyAllianceMode() {
         if (mode) {
             startX = blueStartX; startY = blueStartY; startHeadingDeg = blueStartHeadingDeg;
@@ -581,14 +577,14 @@ public class MainDrive extends LinearOpMode {
                 gamepad2.rumble(500);
             }
 
-            // Lock-on: adjust turret target so it tracks the AprilTag. Bearing = degrees from camera center to tag.
+            // Lock-on: set turret target so it tracks the tag. Bearing = degrees from camera center to tag (positive = tag left).
             if (detection.metadata != null && lockedOn && (detection.id == 20 || detection.id == 24)) {
-                double error = detection.ftcPose.bearing; // positive = tag left of center
+                double error = detection.ftcPose.bearing;
                 final double deadbandDeg = 1.5;
                 final double gain = 0.6;
                 final double maxStepDeg = 8.0;
                 if (Math.abs(error) > deadbandDeg) {
-                    double step = -error * gain; // negate: tag left → turret turn left (target decrease in field frame)
+                    double step = -error * gain;  // negate so tag left → turret turns left (field angle decreases)
                     if (step > maxStepDeg) step = maxStepDeg;
                     if (step < -maxStepDeg) step = -maxStepDeg;
                     turret.setAngle(turret.targetAngle + step);
@@ -626,18 +622,17 @@ public class MainDrive extends LinearOpMode {
 
     }
 
-    public String[] getMotif () {
-        List<AprilTagDetection> currentDetections = aprilTag.getDetections();
-
-        for (AprilTagDetection detection : currentDetections)
+    /** Updates motif from AprilTag 21/22/23 if seen (backup to AirSort; AirSort is source of truth when airsort on). */
+    public String[] getMotif() {
+        for (AprilTagDetection detection : aprilTag.getDetections()) {
             switch (detection.id) {
-
-                case 21 :  motif[0] = "green"; motif[1] = "purple"; motif[2] = "purple"; break;
-                case 22 :  motif[0] = "purple"; motif[1] = "green"; motif[2] = "purple"; break;
-                case 23 :  motif[0] = "purple"; motif[1] = "purple"; motif[2] = "green"; break;
-
+                case 21: motif[0] = "green"; motif[1] = "purple"; motif[2] = "purple"; return motif;
+                case 22: motif[0] = "purple"; motif[1] = "green"; motif[2] = "purple"; return motif;
+                case 23: motif[0] = "purple"; motif[1] = "purple"; motif[2] = "green"; return motif;
+                default: break;
             }
-    return motif;
+        }
+        return motif;
     }
 
     /** Count of color sensors (c1,c2,c3) with R+G+B >= artifactThreshold. Color-agnostic. */
@@ -650,24 +645,19 @@ public class MainDrive extends LinearOpMode {
         return n;
     }
 
-    /** Distance to goal in inches. Prefers camera (tags 20/24) when visible and in range; else odometry. */
+    /** Distance to goal in inches. Prefers camera (tags 20/24) when visible and in 12–200"; else odometry. */
     public static double getDistance() {
-        distance = Math.sqrt(distanceX * distanceX + distanceY * distanceY);
+        distance = Math.hypot(distanceX, distanceY);
         if (Double.isFinite(cameraDistanceInches) && cameraDistanceInches >= 12 && cameraDistanceInches <= 200) {
             return cameraDistanceInches;
         }
         return distance;
     }
 
-    /** Distance to goal in inches from odometry only (pose vs goal). Use for regression launcher. */
+    /** Distance to goal in inches from odometry only. Used by launcher regression and AirSort (not camera). */
     public static double getDistanceFromOdometry() {
         return Math.hypot(distanceX, distanceY);
     }
-
-    //notes
-    // make the code set allaince upon looking at the corresponding apriltag
-    //
-
 
 
 
