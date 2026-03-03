@@ -64,6 +64,22 @@ public final class Drawing {
         c.strokeCircle(cameraPose.position.x, cameraPose.position.y, RADIUS);
     }
 
+    /** Draw close launching zone as triangle (x1,y1)→(x2,y2)→(x3,y3)→(x1,y1). Field coords, inches. */
+    public static void drawCloseLaunchTriangle(Canvas c, double x1, double y1, double x2, double y2, double x3, double y3, String color) {
+        c.setStrokeWidth(2);
+        c.setStroke(color);
+        c.strokeLine(x1, y1, x2, y2);
+        c.strokeLine(x2, y2, x3, y3);
+        c.strokeLine(x3, y3, x1, y1);
+    }
+
+    /** Draw far zone boundary as circle around goal. */
+    public static void drawFarZoneCircle(Canvas c, double goalX, double goalY, double farMaxIn, String color) {
+        c.setStrokeWidth(1);
+        c.setStroke(color);
+        c.strokeCircle(goalX, goalY, farMaxIn);
+    }
+
     /** Draw pose history as a polyline (localization path). */
     public static void drawPoseHistory(Canvas c, List<Pose2d> history, String color) {
         if (history == null || history.size() < 2) return;

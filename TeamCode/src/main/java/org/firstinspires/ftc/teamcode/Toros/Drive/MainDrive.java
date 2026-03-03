@@ -23,6 +23,7 @@ import org.firstinspires.ftc.teamcode.RR.MecanumDrive;
 import org.firstinspires.ftc.teamcode.RR.PinpointLocalizer;
 import org.firstinspires.ftc.teamcode.RR.PoseBridge;
 import org.firstinspires.ftc.teamcode.Toros.Drive.CameraRelocalization;
+import org.firstinspires.ftc.teamcode.Toros.Drive.ShootingZones;
 import org.firstinspires.ftc.teamcode.Toros.Drive.ShotPhysics;
 import org.firstinspires.ftc.teamcode.Toros.Drive.Subsystems.AirSort;
 import org.firstinspires.ftc.teamcode.Toros.Drive.Subsystems.DriveTrain;
@@ -84,6 +85,14 @@ public class MainDrive extends LinearOpMode {
     /** When true, use AprilTag to estimate robot pose for display/aim; when false, use odometry only. */
     public static boolean useCameraRelocalization = false;
 
+    /** Min R+G+B for a color sensor to count as "artifact present" (color-agnostic). */
+    public static int artifactThreshold = 80;
+    /** Gamepad2 rumble duration (ms) when entering close zone with 2+ artifacts. */
+    public static int closeZoneRumbleMs = 300;
+    /** GoBilda LED (servo PWM 0–1). Tune to match Product Insight #4. */
+    public static double ledPosNormal = 0.50;
+    public static double ledPosReady = 0.35;
+
     public AprilTagProcessor aprilTag;
     public String[] motif = new String[3];
     public VisionPortal visionPortal;
@@ -95,6 +104,7 @@ public class MainDrive extends LinearOpMode {
     /** true = airsort mode: launcher uses fast/slow shot from motif + ball color. Toggle: Operator Back. */
     private boolean airSortActive = false;
     private boolean prevBack = false;
+    private boolean prevReadyToShoot = false;
     /** Delay (ms) from shot detected until shot index advances. Tune in Dashboard if index was too slow. */
     public static double airsortAdvanceDelayMs = 250;
     List<LynxModule> allHubs;
@@ -258,8 +268,13 @@ public class MainDrive extends LinearOpMode {
             // Alliance can be changed during run: goal/start update (pose not reset)
             if (gamepad1.dpad_left) { mode = true; applyAllianceMode(); }
             else if (gamepad1.dpad_right) { mode = false; applyAllianceMode(); }
-            // --- 3. Telemetry, drive, turret run, lock-on, intake ---
-            led.setPosition(1);
+            // --- 3. Close zone + artifacts + rumble + LED ---
+            int artifactCount = countArtifacts();
+            boolean inCloseTriangle = ShootingZones.isInCloseLaunchTriangle(pose.position.x, pose.position.y);
+            boolean readyToShoot = inCloseTriangle && artifactCount >= 2;
+            if (readyToShoot && !prevReadyToShoot) gamepad2.rumble(closeZoneRumbleMs);
+            prevReadyToShoot = readyToShoot;
+            led.setPosition(readyToShoot ? ledPosReady : ledPosNormal);
             initTelemetry();
             telemetryAprilTag();
             getMotif();
@@ -314,6 +329,17 @@ public class MainDrive extends LinearOpMode {
             Drawing.drawRobot(packet.fieldOverlay(), displayPose, 1, cameraPose != null ? "#FF5722" : "#3F51B5"); // robot at estimated pose (orange = camera, blue = odom)
             if (cameraPose != null) Drawing.drawRobot(packet.fieldOverlay(), pose, 1, "#9FA8DA"); // odometry as lighter circle when camera active (compare)
             Drawing.drawGoal(packet.fieldOverlay(), goalX, goalY, "#4CAF50");         // goal (green)
+            Drawing.drawCloseLaunchTriangle(packet.fieldOverlay(),
+                    ShootingZones.closeTriX1, ShootingZones.closeTriY1,
+                    ShootingZones.closeTriX2, ShootingZones.closeTriY2,
+                    ShootingZones.closeTriX3, ShootingZones.closeTriY3, "#80E27E");
+            Drawing.drawFarZoneCircle(packet.fieldOverlay(), goalX, goalY, ShootingZones.farMaxIn, "#4FC3F7");
+            ShootingZones.Zone shootingZone = ShootingZones.getShootingZone(pose.position.x, pose.position.y, goalX, goalY);
+            boolean inField = ShootingZones.isInsideField(pose.position.x, pose.position.y);
+            packet.put("shooting_zone", shootingZone.name().toLowerCase());
+            packet.put("in_field", inField);
+            packet.put("artifact_count", artifactCount);
+            packet.put("ready_to_shoot", readyToShoot);
             if (turretVelocityCompensation && turretVelocityCompGain != 0) {
                 Drawing.drawVirtualGoal(packet.fieldOverlay(), aimGoalX, aimGoalY, "#FF9800"); // virtual goal (orange) when vel comp on
             }
@@ -612,6 +638,16 @@ public class MainDrive extends LinearOpMode {
 
             }
     return motif;
+    }
+
+    /** Count of color sensors (c1,c2,c3) with R+G+B >= artifactThreshold. Color-agnostic. */
+    private int countArtifacts() {
+        int t = artifactThreshold;
+        int n = 0;
+        if (intake.c1.red() + intake.c1.green() + intake.c1.blue() >= t) n++;
+        if (intake.c2.red() + intake.c2.green() + intake.c2.blue() >= t) n++;
+        if (intake.c3.red() + intake.c3.green() + intake.c3.blue() >= t) n++;
+        return n;
     }
 
     /** Distance to goal in inches. Prefers camera (tags 20/24) when visible and in range; else odometry. */
