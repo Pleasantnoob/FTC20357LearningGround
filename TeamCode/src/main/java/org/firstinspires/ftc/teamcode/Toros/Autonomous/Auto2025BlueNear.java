@@ -147,6 +147,10 @@ public class Auto2025BlueNear extends LinearOpMode {
 
     ArrayList<String> stored = new ArrayList<>();
     ArrayList<String> motif = new ArrayList<>();
+
+    /** Set false when main sequence ends so background TurretAimAction stops. */
+    private volatile boolean autoRunning = true;
+
     @Override
     public void runOpMode() {
 
@@ -189,8 +193,9 @@ public class Auto2025BlueNear extends LinearOpMode {
 
 
         if (opModeIsActive()) {
-            // Same shot physics and goal aiming as teleop: distance → hood/flywheel, turret aims at goal
-            Actions.runBlocking(new SequentialAction(
+            autoRunning = true;
+            // Passive odometry aim: turret aims at blue goal every tick in parallel with main sequence (same as Red Near Odometry Aim).
+            Action mainSequence = new SequentialAction(
                     tab1,
                     new RevAndAimAction(drive, intake, turret, 2.0),
                     new ShootAction(drive, intake, turret, 4.0),
@@ -203,7 +208,13 @@ public class Auto2025BlueNear extends LinearOpMode {
                     new RevAndAimAction(drive, intake, turret, 2.0),
                     new ShootAction(drive, intake, turret, 4.0),
                     tab6_park,
-                    new StopLauncherAction(intake)
+                    new StopLauncherAction(intake),
+                    new SetFlagAndEndAction()
+            );
+            Actions.runBlocking(new ParallelAction(
+                    new TurretAimAction(drive, turret, GOAL_X, GOAL_Y),
+                    new HoodAndFlywheelUpdateAction(drive, intake, GOAL_X, GOAL_Y),
+                    mainSequence
             ));
 
             PoseBridge.save(drive.localizer.getPose());
@@ -334,6 +345,67 @@ public class Auto2025BlueNear extends LinearOpMode {
         public boolean run(@NonNull TelemetryPacket p) {
             intake.stopLauncherAuto();
             return false;
+        }
+    }
+
+    /** Sets autoRunning = false so background TurretAimAction stops. */
+    private class SetFlagAndEndAction implements Action {
+        @Override
+        public boolean run(@NonNull TelemetryPacket p) {
+            autoRunning = false;
+            return false;
+        }
+    }
+
+    /** Continuously aims turret at blue goal using odometry pose. Runs in parallel with main sequence until it ends. */
+    private class TurretAimAction implements Action {
+        private final MecanumDrive drive;
+        private final Turret turret;
+        private final double goalX;
+        private final double goalY;
+
+        TurretAimAction(MecanumDrive drive, Turret turret, double goalX, double goalY) {
+            this.drive = drive;
+            this.turret = turret;
+            this.goalX = goalX;
+            this.goalY = goalY;
+        }
+
+        @Override
+        public boolean run(@NonNull TelemetryPacket p) {
+            drive.updatePoseEstimate();
+            Pose2d pose = drive.localizer.getPose();
+            double dx = goalX - pose.position.x;
+            double dy = goalY - pose.position.y;
+            double angleToGoalDeg = Turret.wrapDeg360(Math.toDegrees(Math.atan2(dy, dx)));
+            turret.botHeading = Turret.wrapDeg360(Math.toDegrees(pose.heading.toDouble()));
+            turret.targetAngle = angleToGoalDeg;
+            turret.runTurretGyro();
+            return autoRunning;
+        }
+    }
+
+    /** Continuously updates hood angle and flywheel target velocity from current odometry distance to blue goal. Runs in parallel with main sequence. */
+    private class HoodAndFlywheelUpdateAction implements Action {
+        private final MecanumDrive drive;
+        private final IntakeV2 intake;
+        private final double goalX;
+        private final double goalY;
+
+        HoodAndFlywheelUpdateAction(MecanumDrive drive, IntakeV2 intake, double goalX, double goalY) {
+            this.drive = drive;
+            this.intake = intake;
+            this.goalX = goalX;
+            this.goalY = goalY;
+        }
+
+        @Override
+        public boolean run(@NonNull TelemetryPacket p) {
+            drive.updatePoseEstimate();
+            Pose2d pose = drive.localizer.getPose();
+            double dist = Math.hypot(goalX - pose.position.x, goalY - pose.position.y);
+            intake.setHoodAndFlywheelFromDistance(dist);
+            return autoRunning;
         }
     }
 
