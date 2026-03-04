@@ -390,7 +390,10 @@ public class IntakeV2 {
      * Flywheel: -4.86091x - 818.80229 ticks/s.
      */
     public void updateHoodAndFlywheelFromOdometry() {
-        double distanceInches = MainDrive.getDistanceFromOdometry();
+        // When velocity comp is on, MainDrive sets distanceForHoodSpeedInches (stronger comp for hood/speed).
+        double distanceInches = (MainDrive.turretVelocityCompensation && Double.isFinite(MainDrive.distanceForHoodSpeedInches))
+                ? MainDrive.distanceForHoodSpeedInches
+                : MainDrive.getDistanceFromOdometry();
         distanceInches = Math.max(12.0, Math.min(180.0, distanceInches)); // clamp to valid range
 
         double x = distanceInches;

@@ -99,8 +99,12 @@ public class Turret {
     /** Robot-relative angle limits (deg). When exceeded, encoder is wrapped via setCurrentPosition to prevent wire tangling. */
     public static double wrapLimitDeg = 180.0;
 
-    /** Nudge sensitivity: degrees per unit of left_stick_x. Adjust target when stick pushed to correct drift/gear skip. */
-    public static double nudgeDegPerUnit = 4.0;
+    /** Nudge sensitivity: degrees added per loop per unit of left_stick_x. Higher = snappier correction (tune on Dashboard). */
+    public static double nudgeDegPerUnit = 5.0;
+    /** Persistent aim offset (degrees). Nudge adds to this so the turret aim is permanently shifted (fixes long-term drift). Clamped to ±aimOffsetMaxDeg. */
+    public double aimOffsetDeg = 0;
+    /** Max magnitude of aimOffsetDeg (degrees). Increase if nudge stops responding—you've hit the cap. */
+    public static double aimOffsetMaxDeg = 170.0;
 
     public Turret(HardwareMap hardwareMap, Gamepad gamepad) {
         turretMotor = hardwareMap.get(DcMotorEx.class, "turret");
@@ -147,9 +151,10 @@ public class Turret {
         power = pid2 + ff;
         turretMotor.setPower(turretDriveEnabled ? power : 0);
 
-        // Gamepad: left stick X nudge — adjust target to correct drift/gear skip (MainDrive must not overwrite when nudging)
+        // Gamepad: left stick X nudge — permanently shift aim offset to correct long-term drift (MainDrive adds offset to angle-to-goal)
         if (Math.abs(gamepad2.left_stick_x) > 0.1) {
-            targetAngle = wrapDeg360(targetAngle - gamepad2.left_stick_x * nudgeDegPerUnit);
+            aimOffsetDeg -= gamepad2.left_stick_x * nudgeDegPerUnit;
+            aimOffsetDeg = Math.max(-aimOffsetMaxDeg, Math.min(aimOffsetMaxDeg, aimOffsetDeg));
         }
         if (gamepad2.aWasPressed()) {
             targetAngle = 0;
@@ -189,7 +194,8 @@ public class Turret {
         turretMotor.setPower(turretDriveEnabled ? power : 0);
 
         if (Math.abs(gamepad2.left_stick_x) > 0.1) {
-            targetAngle = wrapDeg360(targetAngle - gamepad2.left_stick_x * nudgeDegPerUnit);
+            aimOffsetDeg -= gamepad2.left_stick_x * nudgeDegPerUnit;
+            aimOffsetDeg = Math.max(-aimOffsetMaxDeg, Math.min(aimOffsetMaxDeg, aimOffsetDeg));
         }
         if (gamepad2.aWasPressed()) {
             targetAngle = 0;

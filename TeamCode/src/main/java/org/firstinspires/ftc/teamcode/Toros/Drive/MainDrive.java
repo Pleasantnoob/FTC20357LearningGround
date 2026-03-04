@@ -77,9 +77,14 @@ public class MainDrive extends LinearOpMode {
     /** If turret mechanical 0° is not aligned with robot +X, add offset here (e.g. 90 or -90). Tune on Dashboard. */
     public static double turretAngleOffsetDeg = 0.0;
 
-    /** Velocity compensation: virtual goal = goal - velocity * (gain * timeOfFlight). Backwards: virtual goal farther than goal; side-to-side: aim opposite to motion. */
-    public static boolean turretVelocityCompensation = true;
-    public static double turretVelocityCompGain = 1.0;
+    /** Velocity compensation: virtual goal = goal - velocity * (gain * timeOfFlight). Turret = aim point; hood/speed = distance for shot. */
+    public static boolean turretVelocityCompensation = false;
+    /** Turret aim: lower = less lead (e.g. 0.4–0.6 if turret comp was too strong). */
+    public static double turretVelocityCompGain = 0.5;
+    /** Hood/speed: distance to virtual goal. Higher = more comp (e.g. 1.2–1.8 if hood/speed comp was too weak). */
+    public static double hoodSpeedVelocityCompGain = 1.5;
+    /** Set each loop for IntakeV2: velocity-compensated distance for hood/flywheel when turretVelocityCompensation is on. */
+    public static double distanceForHoodSpeedInches = Double.NaN;
 
     /** When true, use AprilTag to estimate robot pose for display/aim; when false, use odometry only. */
     public static boolean useCameraRelocalization = false;
@@ -236,29 +241,39 @@ public class MainDrive extends LinearOpMode {
             double c = Math.cos(h), s = Math.sin(h);
             double worldVx = c * robotVel.x - s * robotVel.y;
             double worldVy = s * robotVel.x + c * robotVel.y;
-            double distForShotVel = getDistance();
-            double[] hoodSpeedVel = ShotPhysics.hoodAndSpeedFromDistanceInches(distForShotVel);
+            // First pass: raw distance for time-of-flight estimate.
+            double distRaw = getDistance();
+            double[] hoodSpeedVel = ShotPhysics.hoodAndSpeedFromDistanceInches(distRaw);
             double hoodDegForVelComp = IntakeV2.manualMode ? IntakeV2.manualHoodAngleDeg : hoodSpeedVel[0];
             double speedMPSForVelComp = IntakeV2.manualMode
                 ? IntakeV2.launchSpeedMPSFromTicksPerSec(IntakeV2.manualTargetVel)
                 : hoodSpeedVel[1];
             double timeOfFlightS = ShotPhysics.timeInAir(speedMPSForVelComp, Math.toRadians(hoodDegForVelComp));
-            // Virtual goal = goal - velocity * (gain * T). So when moving backwards (vel away from goal), virtual goal is
-            // farther from the robot than the goal (beyond the goal). Same formula works for side-to-side: we aim opposite
-            // to velocity so the note can still land at the goal as we move.
+            // Turret: virtual aim goal (weaker comp). Hood/speed: velocity-compensated distance (stronger comp).
             double aimGoalX = goalX;
             double aimGoalY = goalY;
-            if (turretVelocityCompensation && turretVelocityCompGain != 0) {
-                double scale = turretVelocityCompGain * timeOfFlightS;  // in (velocity in/s * T s → in)
-                aimGoalX = goalX - worldVx * scale;
-                aimGoalY = goalY - worldVy * scale;
+            double distForShotVel = distRaw;
+            if (turretVelocityCompensation) {
+                if (turretVelocityCompGain != 0) {
+                    double scaleTurret = turretVelocityCompGain * timeOfFlightS;
+                    aimGoalX = goalX - worldVx * scaleTurret;
+                    aimGoalY = goalY - worldVy * scaleTurret;
+                }
+                if (hoodSpeedVelocityCompGain != 0) {
+                    double scaleHood = hoodSpeedVelocityCompGain * timeOfFlightS;
+                    double vgX = goalX - worldVx * scaleHood;
+                    double vgY = goalY - worldVy * scaleHood;
+                    distForShotVel = Math.hypot(pose.position.x - vgX, pose.position.y - vgY);
+                    hoodSpeedVel = ShotPhysics.hoodAndSpeedFromDistanceInches(distForShotVel);
+                }
             }
+            distanceForHoodSpeedInches = distForShotVel;  // IntakeV2 uses this when vel comp on for hood/flywheel
             double angleToGoalRad = Math.atan2(aimGoalY - pose.position.y, aimGoalX - pose.position.x);
             double angleToGoalDeg = Turret.wrapDeg360(Math.toDegrees(angleToGoalRad) + turretAngleOffsetDeg);
             if (!lockedOn) {
                 if (gamepad2.dpad_up) fieldHoldAngle = 0;
                 else if (gamepad2.dpad_down) fieldHoldAngle = 180;
-                else if (Math.abs(gamepad2.left_stick_x) <= 0.1) fieldHoldAngle = angleToGoalDeg;  // aim at goal when not nudging
+                else if (Math.abs(gamepad2.left_stick_x) <= 0.1) fieldHoldAngle = Turret.wrapDeg360(angleToGoalDeg + turret.aimOffsetDeg);  // aim at goal + persistent nudge offset when not nudging
                 // When left_stick_x nudge is active, keep fieldHoldAngle (Turret updates targetAngle, we store it after runTurretGyro)
                 turret.targetAngle = fieldHoldAngle;
             }
@@ -525,6 +540,7 @@ public class MainDrive extends LinearOpMode {
         telemetry.addData("Field deg", turret.getTurretAngleField());
         telemetry.addData("Robot deg", turret.getTurretAngleRobot());
         telemetry.addData("Target (hold) field deg", turret.targetAngle);
+            telemetry.addData("Aim offset (nudge) deg", turret.aimOffsetDeg);
         telemetry.addData("Lock-on", lockedOn);
 
         // --- 4. Intake / launcher ---
