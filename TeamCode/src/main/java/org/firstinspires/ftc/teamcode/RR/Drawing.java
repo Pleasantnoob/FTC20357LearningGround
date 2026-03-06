@@ -76,6 +76,15 @@ public final class Drawing {
         c.strokeLine(x3, y3, x1, y1);
     }
 
+    /** Draw far zone triangle (x1,y1)→(x2,y2)→(x3,y3). Same style as close zone. */
+    public static void drawFarZoneTriangle(Canvas c, double x1, double y1, double x2, double y2, double x3, double y3, String color) {
+        c.setStrokeWidth(2);
+        c.setStroke(color);
+        c.strokeLine(x1, y1, x2, y2);
+        c.strokeLine(x2, y2, x3, y3);
+        c.strokeLine(x3, y3, x1, y1);
+    }
+
     /** Draw far zone boundary as circle around goal. */
     public static void drawFarZoneCircle(Canvas c, double goalX, double goalY, double farMaxIn, String color) {
         c.setStrokeWidth(1);

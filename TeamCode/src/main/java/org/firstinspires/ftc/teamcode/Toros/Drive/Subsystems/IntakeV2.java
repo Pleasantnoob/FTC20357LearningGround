@@ -53,6 +53,8 @@ public class IntakeV2 {
     private Gamepad gamepad2;
     /** Grace band (ticks/s): can shoot when |launcherVel - targetVel| <= SHOOT_VEL_TOLERANCE (e.g. ±20). */
     public static int SHOOT_VEL_TOLERANCE = 20;
+    /** Override for Far autos only. When > 0, use this instead of SHOOT_VEL_TOLERANCE. Set to 0 to use default. */
+    public static int shootVelToleranceOverride = 0;
 
     public double ticksPerSecond = 1500;
 
@@ -155,9 +157,9 @@ public class IntakeV2 {
 
 
     public void runIntake() {
-        //Moves ball into robot
+        //Moves ball into robot (gamepad1 right trigger: intake=-1, transfer=-0.2 via transfer())
         if (gamepad1.right_trigger > 0.25) {
-            intakeMotor.setPower(-gamepad1.right_trigger);
+            intakeMotor.setPower(-1);
         }
 
         //Moves ball out of robot
@@ -175,27 +177,24 @@ public class IntakeV2 {
             trans.setPower(0);
         }
 
-        if(c3.blue() > 150 && c2.blue() > 150 && c1.blue() > 150){
+        if (hasBallsLoaded()) {
             gamepad1.rumble(1500);
         }
 
         // Hood is set only in runLauncher() (manual or auto from distance). Do not overwrite here or it jitters.
         }
 
-    /** Min RGB sum at c3 to consider "ball at launcher" (stop transfer during intake so we don't double-feed). */
-    private static final int BALL_AT_LAUNCHER_RGB = 80;
-
     /**
      * Transfer belt. Gamepad2 right trigger = shoot (runLauncher owns trans; we return). Gamepad1 right trigger = intake:
-     * run transfer at 0.15 until a ball is sensed at c3, then 0 (intake keeps running). Gamepad1 right/left bumper = manual transfer.
+     * run transfer at -0.2 until a ball is sensed at c3 (c3.blue() > 150, same as rumble), then 0 (intake keeps running). Gamepad1 right/left bumper = manual transfer.
      */
     public void transfer() {
         if (gamepad2.right_trigger > 0.1) return;  // Shooting: runLauncher() sets trans + intake to full; don't overwrite
 
-        // Gamepad1 right trigger (intake): transfer runs slow until ball reaches launcher (c3), then stop transfer so intake stays clear
+        // Gamepad1 right trigger (intake): intake=-1, transfer=-0.2 until ball reaches launcher (c3), then stop transfer
         if (gamepad1.right_trigger > 0.25) {
-            boolean ballAtLauncher = (c3.red() + c3.green() + c3.blue()) >= BALL_AT_LAUNCHER_RGB;
-            trans.setPower(ballAtLauncher ? 0 : 0.15);
+            boolean ballAtLauncher = c3.blue() > 150;
+            trans.setPower(ballAtLauncher ? 0 : -0.2);
             return;
         }
 
@@ -210,6 +209,30 @@ public class IntakeV2 {
             trans.setPower(0.35);
         }
     }
+    /** True when all 3 color sensors see high blue (balls in intake/transfer/launcher). Same logic as rumble. */
+    public boolean hasBallsLoaded() {
+        return c1.blue() > 150 && c2.blue() > 150 && c3.blue() > 150;
+    }
+
+    /** True when at least 2 color sensors see high blue (c*.blue() > 150). Used for LED. */
+    public boolean hasAtLeastTwoBalls() {
+        int n = 0;
+        if (c1.blue() > 150) n++;
+        if (c2.blue() > 150) n++;
+        if (c3.blue() > 150) n++;
+        return n >= 2;
+    }
+
+    /** c3 RGB sum for telemetry. */
+    public int getC3RgbSum() {
+        return c3.red() + c3.green() + c3.blue();
+    }
+
+    /** True when c3 senses ball at launcher (c3.blue() > 150, same as rumble). Transfer stops during gamepad1 right-trigger intake to avoid double-feed. */
+    public boolean getBallAtLauncher() {
+        return c3.blue() > 150;
+    }
+
     public double getLauncherSpeed() {
         return launch.getVelocity();
     }
@@ -415,12 +438,19 @@ public class IntakeV2 {
      * Call this each loop in auto when at shoot position, then runLauncherAuto(true) to feed.
      */
     public void setHoodAndFlywheelFromDistance(double distanceInches) {
+        setHoodAndFlywheelFromDistance(distanceInches, 0);
+    }
+
+    /**
+     * Same as above with optional flywheel boost (ticks/s). Negative = faster (fixes undershoot).
+     */
+    public void setHoodAndFlywheelFromDistance(double distanceInches, double flywheelBoostTicksPerSec) {
         distanceInches = Math.max(12.0, Math.min(180.0, distanceInches));
         double x = distanceInches;
         double hoodAngleDeg = HOOD_A * x * x * x + HOOD_B * x * x + HOOD_C * x + HOOD_D;
         hoodAngleDeg = Math.max(MIN_HOOD_DEG, Math.min(MAX_HOOD_DEG, hoodAngleDeg));
         double flywheelTarget = FLYWHEEL_SLOPE * x + FLYWHEEL_INTERCEPT;
-        targetVel = (int) flywheelTarget;
+        targetVel = (int) (flywheelTarget + flywheelBoostTicksPerSec);
         double hoodValue = minServo + ((70.0 - hoodAngleDeg) / 30.0) * (maxServo - minServo);
         if (lastHoodValue < 0 || Math.abs(hoodValue - lastHoodValue) > HOOD_DEADBAND) {
             hood.setPosition(hoodValue);
@@ -430,6 +460,7 @@ public class IntakeV2 {
 
     /**
      * Run flywheel PID and optionally feed (for autonomous). Call setHoodAndFlywheelFromDistance first.
+     * When feed=false, only updates flywheel—does NOT touch trans/intake (pickup actions control those).
      * @param feed true to run transfer+intake when at speed (shooting)
      */
     public void runLauncherAuto(boolean feed) {
@@ -439,13 +470,12 @@ public class IntakeV2 {
         double pid = controller.calculate(launchVel, targetVel);
         double ff = feedforward.calculate(targetVel, accel);
         launch.setPower(pid + ff);
-        if (feed && Math.abs(launch.getVelocity() - targetVel) <= SHOOT_VEL_TOLERANCE) {
+        int tolerance = shootVelToleranceOverride > 0 ? shootVelToleranceOverride : SHOOT_VEL_TOLERANCE;
+        if (feed && Math.abs(launch.getVelocity() - targetVel) <= tolerance) {
             trans.setPower(-1.0);
             intakeMotor.setPower(-1.0);
-        } else {
-            trans.setPower(0);
-            intakeMotor.setPower(0);
         }
+        // When feed=false, leave trans/intake alone so pickup actions (IntakeRunAction, TransRunAction) can control them
     }
 
     /** Stop launcher and feed (for end of auto or between cycles). */
@@ -455,15 +485,25 @@ public class IntakeV2 {
         intakeMotor.setPower(0);
     }
 
-    /** Run intake (pull balls in) for autonomous pickup. */
+    /** Run intake (pull balls in) for autonomous pickup. Intake -1, transfer -0.2. */
     public void runIntakeAuto(boolean run) {
         if (run) {
-            intakeMotor.setPower(-0.57);
-            trans.setPower(-0.18);
+            intakeMotor.setPower(-1.0);
+            trans.setPower(-0.2);
         } else {
             intakeMotor.setPower(0);
             trans.setPower(0);
         }
+    }
+
+    /** Set intake motor only (for auto actions that run intake/transfer separately in parallel). */
+    public void setIntakeMotorAuto(double power) {
+        intakeMotor.setPower(power);
+    }
+
+    /** Set transfer motor only (for auto actions that run intake/transfer separately in parallel). */
+    public void setTransferMotorAuto(double power) {
+        trans.setPower(power);
     }
 
     /** Unused: do not call. Kept only for reference. Hood is set by updateHoodAndFlywheelFromOdometry() or manual params. */

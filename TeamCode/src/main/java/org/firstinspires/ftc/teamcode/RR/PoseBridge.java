@@ -3,19 +3,23 @@ package org.firstinspires.ftc.teamcode.RR;
 import com.acmerobotics.roadrunner.Pose2d;
 
 /**
- * Bridges field position and heading from Autonomous to Teleop.
+ * Bridges field position, heading, and alliance from Autonomous to Teleop.
  * Static state persists while the app is running, so when you run Auto then Teleop
- * in the same session, Teleop can start from the pose Auto ended at.
+ * in the same session, Teleop can start from the pose Auto ended at and the same alliance.
  *
  * <p>Auto: call {@link #save(Pose2d)} with the current localizer pose (e.g. at end of autonomous
- * or each loop). Teleop: in init, use {@link #getPose()} and pass to your localizer's setPose
- * if {@link #hasPose()} is true.
+ * or each loop). Call {@link #saveAlliance(boolean)} with true for Blue, false for Red.
+ * Teleop: in init, use {@link #getPose()} and pass to your localizer's setPose
+ * if {@link #hasPose()} is true. Use {@link #getAlliance()} if {@link #hasAlliance()} to set
+ * the alliance (true = Blue, false = Red).
  */
 public final class PoseBridge {
     private static volatile boolean hasPose;
     private static volatile double x;
     private static volatile double y;
     private static volatile double headingRad;
+    private static volatile boolean hasAlliance;
+    private static volatile boolean isBlue;
 
     private PoseBridge() {}
 
@@ -25,6 +29,22 @@ public final class PoseBridge {
         y = pose.position.y;
         headingRad = pose.heading.toDouble();
         hasPose = true;
+    }
+
+    /** Saves alliance for Teleop. true = Blue, false = Red. */
+    public static void saveAlliance(boolean blue) {
+        isBlue = blue;
+        hasAlliance = true;
+    }
+
+    /** Returns true if an alliance was saved. */
+    public static boolean hasAlliance() {
+        return hasAlliance;
+    }
+
+    /** Returns saved alliance: true = Blue, false = Red. */
+    public static boolean getAlliance() {
+        return isBlue;
     }
 
     /** Returns true if a pose was saved (e.g. from a previous Auto run). */
@@ -44,5 +64,10 @@ public final class PoseBridge {
     /** Clears the saved pose so it isn't reused on a later Teleop start. */
     public static void clear() {
         hasPose = false;
+    }
+
+    /** Clears the saved alliance. */
+    public static void clearAlliance() {
+        hasAlliance = false;
     }
 }

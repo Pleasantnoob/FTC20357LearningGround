@@ -24,26 +24,19 @@ import com.acmerobotics.roadrunner.VelConstraint;
 import com.acmerobotics.roadrunner.ftc.DownsampledWriter;
 import com.acmerobotics.roadrunner.ftc.Encoder;
 import com.acmerobotics.roadrunner.ftc.FlightRecorder;
-import com.acmerobotics.roadrunner.ftc.LazyHardwareMapImu;
-import com.acmerobotics.roadrunner.ftc.LazyImu;
 import com.acmerobotics.roadrunner.ftc.LynxFirmware;
 import com.acmerobotics.roadrunner.ftc.OverflowEncoder;
 import com.acmerobotics.roadrunner.ftc.PositionVelocityPair;
 import com.acmerobotics.roadrunner.ftc.RawEncoder;
 import com.qualcomm.hardware.lynx.LynxModule;
-import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.HardwareMap;
-import com.qualcomm.robotcore.hardware.IMU;
 import com.qualcomm.robotcore.hardware.VoltageSensor;
 
-import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
-import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
 import org.firstinspires.ftc.teamcode.RR.messages.DriveCommandMessage;
 import org.firstinspires.ftc.teamcode.RR.messages.MecanumCommandMessage;
-import org.firstinspires.ftc.teamcode.RR.messages.MecanumLocalizerInputsMessage;
 import org.firstinspires.ftc.teamcode.RR.messages.PoseMessage;
 
 import java.lang.Math;
@@ -53,24 +46,16 @@ import java.util.List;
 
 @Config
 public final class       MecanumDrive {
-    public double imuHeading;
     public static class Params {
-        // IMU orientation
-        // TODO: fill in these values based on
-        //   see https://ftc-docs.firstinspires.org/en/latest/programming_resources/imu/imu.html?highlight=imu#physical-hub-mounting
-        public RevHubOrientationOnRobot.LogoFacingDirection logoFacingDirection =
-                RevHubOrientationOnRobot.LogoFacingDirection.FORWARD;
-        public RevHubOrientationOnRobot.UsbFacingDirection usbFacingDirection =
-                RevHubOrientationOnRobot.UsbFacingDirection.UP;
-
-        public double inPerTick = 0.00194723378259707 ;
-        public double lateralInPerTick = 0.0015233261235494439;
-        public double trackWidthTicks = 7569.74702724133;
+        // 2 dead wheel odometry: GoBilda pods. Both par and perp use same resolution for identical pods.
+        /** Par and perp use same value. 4-Bar (32mm)≈0.00198, Swingarm (48mm)≈0.00290. Tunable on FTC Dashboard. */
+        public double inPerTick = 0.00194723378259707;
+        public double trackWidthTicks = 7890.2951262221695;
 
         // feedforward parameters (in tick units)
-        public double kS = 1.1750333529506611;
-        public double kV =  0.00034147427328989183;
-        public double kA = 0.0007;
+        public double kS = 0.8999998620954397;
+        public double kV = 0.0003411155484269247;
+        public double kA = 0.00006;
 
         // path profile parameters (in inches)
         public double maxWheelVel = 100;
@@ -82,19 +67,28 @@ public final class       MecanumDrive {
         public double maxAngAccel =  Math.PI;
 
         // path controller gains
-        public double axialGain = 7;
-        public double lateralGain = 4;
-        public double headingGain = 4; // shared with turn
+        public double axialGain = 14;
+        public double lateralGain = 10;
+        public double headingGain = 9; // shared with turn
 
         public double axialVelGain = 0.0;
         public double lateralVelGain = 0.0;
         public double headingVelGain = 0.0; // shared with turn
+
+        // Position hold (teleop idle): lower gains to avoid aggressive correction from odometry noise
+        public double holdAxialGain = 3.0;
+        public double holdLateralGain = 3.0;
+        public double holdHeadingGain = 2.0;
+        /** Position error deadband (in): below this, no correction. Reduces jitter from odometry noise. */
+        public double holdPosDeadband = 0.4;
+        /** Heading error deadband (rad): below this, no correction. */
+        public double holdHeadingDeadband = 0.05;
     }
 
     public static Params PARAMS = new Params();
 
     public final MecanumKinematics kinematics = new MecanumKinematics(
-            PARAMS.inPerTick * PARAMS.trackWidthTicks, PARAMS.inPerTick / PARAMS.lateralInPerTick);
+            PARAMS.inPerTick * PARAMS.trackWidthTicks, 1.0);
 
     public final TurnConstraints defaultTurnConstraints = new TurnConstraints(
             PARAMS.maxAngVel, -PARAMS.maxAngAccel, PARAMS.maxAngAccel);
@@ -110,8 +104,6 @@ public final class       MecanumDrive {
 
     public final VoltageSensor voltageSensor;
 
-    public final LazyImu lazyImu;
-
     public final Localizer localizer;
     private final LinkedList<Pose2d> poseHistory = new LinkedList<>();
 
@@ -119,106 +111,6 @@ public final class       MecanumDrive {
     private final DownsampledWriter targetPoseWriter = new DownsampledWriter("TARGET_POSE", 50_000_000);
     private final DownsampledWriter driveCommandWriter = new DownsampledWriter("DRIVE_COMMAND", 50_000_000);
     private final DownsampledWriter mecanumCommandWriter = new DownsampledWriter("MECANUM_COMMAND", 50_000_000);
-
-    public class DriveLocalizer implements Localizer {
-        public final Encoder leftFront, leftBack, rightBack, rightFront;
-        public final IMU imu;
-
-        private int lastLeftFrontPos, lastLeftBackPos, lastRightBackPos, lastRightFrontPos;
-        private Rotation2d lastHeading;
-            private boolean initialized;
-        private Pose2d pose;
-
-
-        public DriveLocalizer(Pose2d pose) {
-            leftFront = new OverflowEncoder(new RawEncoder(MecanumDrive.this.leftFront));
-            leftBack = new OverflowEncoder(new RawEncoder(MecanumDrive.this.leftBack));
-            rightBack = new OverflowEncoder(new RawEncoder(MecanumDrive.this.rightBack));
-            rightFront = new OverflowEncoder(new RawEncoder(MecanumDrive.this.rightFront));
-
-            imu = lazyImu.get();
-
-            // TODO: reverse encoders if needed
-            //   leftFront.setDirection(DcMotorSimple.Direction.REVERSE);
-            leftFront.setDirection(DcMotorSimple.Direction.REVERSE);
-            leftBack.setDirection(DcMotorSimple.Direction.REVERSE);
-            this.pose = pose;
-            imuHeading = 0;
-        }
-
-        @Override
-        public void setPose(Pose2d pose) {
-            this.pose = pose;
-        }
-
-        @Override
-        public Pose2d getPose() {
-            return pose;
-        }
-
-
-        @Override
-        public PoseVelocity2d update() {
-            PositionVelocityPair leftFrontPosVel = leftFront.getPositionAndVelocity();
-            PositionVelocityPair leftBackPosVel = leftBack.getPositionAndVelocity();
-            PositionVelocityPair rightBackPosVel = rightBack.getPositionAndVelocity();
-            PositionVelocityPair rightFrontPosVel = rightFront.getPositionAndVelocity();
-
-            YawPitchRollAngles angles = imu.getRobotYawPitchRollAngles();
-
-            FlightRecorder.write("MECANUM_LOCALIZER_INPUTS", new MecanumLocalizerInputsMessage(
-                    leftFrontPosVel, leftBackPosVel, rightBackPosVel, rightFrontPosVel, angles));
-
-            Rotation2d heading = Rotation2d.exp(angles.getYaw(AngleUnit.RADIANS));
-
-            if (!initialized) {
-                initialized = true;
-
-                lastLeftFrontPos = leftFrontPosVel.position;
-                lastLeftBackPos = leftBackPosVel.position;
-                lastRightBackPos = rightBackPosVel.position;
-                lastRightFrontPos = rightFrontPosVel.position;
-
-                lastHeading = heading;
-
-                return new PoseVelocity2d(new Vector2d(0.0, 0.0), 0.0);
-            }
-
-            double headingDelta = heading.minus(lastHeading);
-            Twist2dDual<Time> twist = kinematics.forward(new MecanumKinematics.WheelIncrements<>(
-                    new DualNum<Time>(new double[]{
-                            (leftFrontPosVel.position - lastLeftFrontPos),
-                            leftFrontPosVel.velocity,
-                    }).times(PARAMS.inPerTick),
-                    new DualNum<Time>(new double[]{
-                            (leftBackPosVel.position - lastLeftBackPos),
-                            leftBackPosVel.velocity,
-                    }).times(PARAMS.inPerTick),
-                    new DualNum<Time>(new double[]{
-                            (rightBackPosVel.position - lastRightBackPos),
-                            rightBackPosVel.velocity,
-                    }).times(PARAMS.inPerTick),
-                    new DualNum<Time>(new double[]{
-                            (rightFrontPosVel.position - lastRightFrontPos),
-                            rightFrontPosVel.velocity,
-                    }).times(PARAMS.inPerTick)
-            ));
-
-            lastLeftFrontPos = leftFrontPosVel.position;
-            lastLeftBackPos = leftBackPosVel.position;
-            lastRightBackPos = rightBackPosVel.position;
-            lastRightFrontPos = rightFrontPosVel.position;
-
-            lastHeading = heading;
-
-            pose = pose.plus(new Twist2d(
-                    twist.line.value(),
-                    headingDelta
-            ));
-
-            return twist.velocity().value();
-        }
-    }
 
     public MecanumDrive(HardwareMap hardwareMap, Pose2d pose) {
         LynxFirmware.throwIfModulesAreOutdated(hardwareMap);
@@ -248,10 +140,6 @@ public final class       MecanumDrive {
         // TODO: reverse motor directions if needed
         //   leftFront.setDirection(DcMotorSimple.Direction.REVERSE);
 
-        // TODO: make sure your config has an IMU with this name (can be BNO or BHI)
-            //   see https://ftc-docs.firstinspires.org/en/latest/hardware_and_software_configuration/configuring/index.html
-        lazyImu = new LazyHardwareMapImu(hardwareMap, "imu", new RevHubOrientationOnRobot(
-                PARAMS.logoFacingDirection, PARAMS.usbFacingDirection));
 
 
         voltageSensor = hardwareMap.voltageSensor.iterator().next();
@@ -460,6 +348,43 @@ public final class       MecanumDrive {
         }
     }
 
+    /**
+     * Computes velocity command to hold position against external pushes.
+     * Uses lower hold gains and error deadband to avoid aggressive correction from odometry noise.
+     * Call when driver input is idle; apply via setDrivePowers().
+     */
+    public PoseVelocity2d computeHoldCorrection(Pose2d holdPose) {
+        Pose2d actual = localizer.getPose();
+        Pose2d error = holdPose.minusExp(actual);
+        double ex = error.position.x;
+        double ey = error.position.y;
+        double eh = error.heading.toDouble();
+        // Deadband: ignore small errors (odometry noise)
+        double db = PARAMS.holdPosDeadband;
+        if (Math.abs(ex) < db) ex = 0;
+        if (Math.abs(ey) < db) ey = 0;
+        if (Math.abs(eh) < PARAMS.holdHeadingDeadband) eh = 0;
+        double vx = PARAMS.holdAxialGain * ex;
+        double vy = PARAMS.holdLateralGain * ey;
+        double vh = PARAMS.holdHeadingGain * eh;
+        PoseVelocity2d cmd = new PoseVelocity2d(new Vector2d(vx, vy), vh);
+        // Clamp magnitude to prevent runaway on odometry glitches
+        final double maxLinVel = 50.0;
+        final double maxAngVel = Math.PI;
+        double linMag = Math.hypot(cmd.linearVel.x, cmd.linearVel.y);
+        if (linMag > maxLinVel) {
+            double scale = maxLinVel / linMag;
+            cmd = new PoseVelocity2d(
+                    new Vector2d(cmd.linearVel.x * scale, cmd.linearVel.y * scale),
+                    cmd.angVel);
+        }
+        if (Math.abs(cmd.angVel) > maxAngVel) {
+            cmd = new PoseVelocity2d(cmd.linearVel,
+                    Math.signum(cmd.angVel) * maxAngVel);
+        }
+        return cmd;
+    }
+
     public PoseVelocity2d updatePoseEstimate() {
         PoseVelocity2d vel = localizer.update();
         poseHistory.add(localizer.getPose());
@@ -467,7 +392,6 @@ public final class       MecanumDrive {
         while (poseHistory.size() > 100) {
             poseHistory.removeFirst();
         }
-
         estimatedPoseWriter.write(new PoseMessage(localizer.getPose()));
         
         

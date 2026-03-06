@@ -1,19 +1,14 @@
 package org.firstinspires.ftc.teamcode.Toros.Drive.Subsystems;
 
-import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.Gamepad;
 import com.qualcomm.robotcore.hardware.HardwareMap;
-import com.qualcomm.robotcore.hardware.IMU;
-
-import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 
 
 public class DriveTrain {
 
     private DcMotor FrontLeftMotor,BackLeftMotor,FrontRightMotor,BackRightMotor; //Motors
-    IMU imu;
     public double botHeading;
     private boolean Rtoggle, XYtoggle; // Toggles for turning down the speed of the robot
     Gamepad currentGamepad1 = new Gamepad(); //fragment of the toggles. needed just in case
@@ -41,18 +36,6 @@ public class DriveTrain {
         FrontRightMotor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         BackLeftMotor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         BackRightMotor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-
-        //Declares Imu based off of logo direction and USB direction
-        imu = hardwareMap.get(IMU.class, "imu");
-        IMU.Parameters parameters = new IMU.Parameters(new RevHubOrientationOnRobot(
-                RevHubOrientationOnRobot.LogoFacingDirection.FORWARD,
-                RevHubOrientationOnRobot.UsbFacingDirection.UP));
-
-
-
-
-        imu.initialize(parameters);
-        imu.resetYaw();
 
         //creates our gamepad object in order to use controls
         this.gamepad1 = gamepad;
@@ -116,11 +99,6 @@ public class DriveTrain {
         double backRightPower = (rotY + rotX - turn) / denominator;
 
 
-        //reset imu button
-        if(gamepad1.start){
-            imu.resetYaw();
-        }
-
         FrontLeftMotor.setPower(frontLeftPower);
         BackLeftMotor.setPower(backLeftPower);
         FrontRightMotor.setPower(frontRightPower);
@@ -128,13 +106,6 @@ public class DriveTrain {
     }
 
     public void driveRobotCentric(){
-
-        if(gamepad1.xWasPressed()){
-            imu.initialize(new IMU.Parameters(new RevHubOrientationOnRobot(
-                    RevHubOrientationOnRobot.LogoFacingDirection.FORWARD,
-                    RevHubOrientationOnRobot.UsbFacingDirection.UP)));
-            imu.resetYaw();
-        }
 
         double x = gamepad1.left_stick_x; // the *1.1 counteracts imperfect strafing
         double y = -gamepad1.left_stick_y;

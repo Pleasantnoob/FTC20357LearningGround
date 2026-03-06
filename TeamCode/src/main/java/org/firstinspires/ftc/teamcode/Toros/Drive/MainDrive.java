@@ -67,11 +67,11 @@ public class MainDrive extends LinearOpMode {
     public static double goalX = -70.0;
     public static double goalY = 64.0;
 
-    /** Red alliance: same as blue but +Y. Start (-55, 47); goal -X left, +Y; heading 130°. */
-    public static double redStartX = -55.0, redStartY = 47.0, redStartHeadingDeg = 130.0;
+    /** Red alliance: same as blue but +Y. Start (-50, 50); goal -X left, +Y; heading 128°. */
+    public static double redStartX = -50.0, redStartY = 50.0, redStartHeadingDeg = 128.0;
     public static double redGoalX = -70.0, redGoalY = 64.0;
-    /** Blue alliance: mirror of red with -Y and -heading. Start (-55, -47); goal -X -Y; heading -130°. */
-    public static double blueStartX = -55.0, blueStartY = -47.0, blueStartHeadingDeg = -130.0;
+    /** Blue alliance: mirror of red with -Y and -heading. Start (-50, -50); goal -X -Y; heading -128°. */
+    public static double blueStartX = -50.0, blueStartY = -50.0, blueStartHeadingDeg = -128.0;
     public static double blueGoalX = -70.0, blueGoalY = -64.0;
 
     /** If turret mechanical 0° is not aligned with robot +X, add offset here (e.g. 90 or -90). Tune on Dashboard. */
@@ -93,9 +93,19 @@ public class MainDrive extends LinearOpMode {
     public static int artifactThreshold = 80;
     /** Gamepad2 rumble duration (ms) when entering close zone with 2+ artifacts. */
     public static int closeZoneRumbleMs = 300;
-    /** GoBilda LED (servo PWM 0–1). Tune to match Product Insight #4. */
-    public static double ledPosNormal = 0.50;
-    public static double ledPosReady = 0.35;
+    /** GoBilda LED (servo PWM 0–1). Tune on FTC Dashboard -> MainDrive.LedConfig */
+    @Config
+    public static class LedConfig {
+        public static double posNormal = 0.35;
+        public static double posReady = 0.5;
+        /** Red: shown when < 2 balls detected. Tune per Product Insight #4. */
+        public static double posRed = 0.2799;
+    }
+
+    /** Position hold: when sticks below deadband, robot resists external pushes. Tune deadband if too sensitive. */
+    public static boolean positionHoldEnabled = true;
+    public static double positionHoldDeadband = 0.08;
+    public static double driveScale = 0.75;
 
     public AprilTagProcessor aprilTag;
     public String[] motif = new String[3];
@@ -108,16 +118,20 @@ public class MainDrive extends LinearOpMode {
     /** true = airsort mode: launcher uses fast/slow shot from motif + ball color. Toggle: Operator Back. */
     private boolean airSortActive = false;
     private boolean prevBack = false;
+    private boolean prevStart = false;
     private boolean prevReadyToShoot = false;
+    private boolean justResynced = false;
     /** Delay (ms) from shot detected until shot index advances. Tune in Dashboard if index was too slow. */
     public static double airsortAdvanceDelayMs = 250;
     List<LynxModule> allHubs;
     Servo led;
     private boolean lockedOn = false;
     /** true = blue alliance (start/goal from blue*), false = red (red*). Dpad Left = Blue, Dpad Right = Red. */
-    private boolean mode = false;
-    /** Frozen heading (deg) when lock-on is on; used by turret instead of live gyro. */
+    private boolean mode = true;
+    /** Frozen heading (deg) when manual turret mode is on; used by turret instead of live gyro. */
     double k = 0;
+    /** Robot-relative turret angle (deg) in manual mode. Controlled by gamepad2 left stick X. Clamped to ±170. */
+    private double manualTurretDeg = 0;
     /** Field angle (deg) for turret when !lockedOn: angleToGoal (aim) or 0 / 180 from dpad. [0, 360). */
     private double fieldHoldAngle = 0;
 
@@ -135,8 +149,6 @@ public class MainDrive extends LinearOpMode {
 
     /** Pose history for Dashboard path (localization viz); same as used in tuning opmodes. */
     private final LinkedList<Pose2d> poseHistory = new LinkedList<>();
-
-
 
     public static double getDistanceX(){
         return distanceX;
@@ -156,10 +168,16 @@ public class MainDrive extends LinearOpMode {
         initAprilTag();
         drivetrain = new DriveTrain(hardwareMap, gamepad1);
         led = hardwareMap.get(Servo.class, "LED");
+        // If Auto just ran, use its alliance so Teleop starts with same color
+        if (PoseBridge.hasAlliance()) {
+            mode = PoseBridge.getAlliance();
+            PoseBridge.clearAlliance();
+        }
         applyAllianceMode();
         // If Auto just ran and saved its end pose, use it so Teleop starts from that position/heading.
         Pose2d initialPose;
-        if (PoseBridge.hasPose()) {
+        boolean cameFromAuto = PoseBridge.hasPose();
+        if (cameFromAuto) {
             initialPose = PoseBridge.getPose();
             PoseBridge.clear();
             startX = initialPose.position.x;
@@ -174,10 +192,10 @@ public class MainDrive extends LinearOpMode {
         mecanumDrive = new MecanumDrive(hardwareMap, initialPose);
         mecanumDrive.localizer.setPose(initialPose);
         intake = new IntakeV2(hardwareMap, gamepad1, gamepad2, aprilTag);
-        turret = new Turret(hardwareMap, gamepad2);
+        turret = new Turret(hardwareMap, gamepad2, cameFromAuto);
         airSort = new AirSort(aprilTag, intake.c1, intake.c2, intake.c3);
 
-        // During init: Dpad Left = Blue, Dpad Right = Red (start/goal and pose update)
+        // During init: Dpad Left = Blue, Dpad Right = Red. Change alliance anytime before Play.
         while (!isStarted() && opModeIsActive()) {
             if (gamepad1.dpad_left) {
                 mode = true;
@@ -188,10 +206,11 @@ public class MainDrive extends LinearOpMode {
                 applyAllianceMode();
                 mecanumDrive.localizer.setPose(new Pose2d(startX, startY, Math.toRadians(startHeadingDeg)));
             }
+            telemetry.addLine("--- INIT: Change alliance before Play ---");
             telemetry.addData("Alliance", mode ? "BLUE" : "RED");
             telemetry.addData("Start", "%.0f, %.0f @ %.0f deg", startX, startY, startHeadingDeg);
             telemetry.addData("Goal", "%.0f, %.0f", goalX, goalY);
-            telemetry.addData(">", "Dpad L=Blue R=Red, Play=start");
+            telemetry.addData(">", "Dpad L=Blue  Dpad R=Red  Play=start");
             telemetry.update();
             sleep(20);
         }
@@ -271,26 +290,55 @@ public class MainDrive extends LinearOpMode {
             double angleToGoalRad = Math.atan2(aimGoalY - pose.position.y, aimGoalX - pose.position.x);
             double angleToGoalDeg = Turret.wrapDeg360(Math.toDegrees(angleToGoalRad) + turretAngleOffsetDeg);
             if (!lockedOn) {
-                if (gamepad2.dpad_up) fieldHoldAngle = 0;
-                else if (gamepad2.dpad_down) fieldHoldAngle = 180;
-                else if (Math.abs(gamepad2.left_stick_x) <= 0.1) fieldHoldAngle = Turret.wrapDeg360(angleToGoalDeg + turret.aimOffsetDeg);  // aim at goal + persistent nudge offset when not nudging
-                // When left_stick_x nudge is active, keep fieldHoldAngle (Turret updates targetAngle, we store it after runTurretGyro)
-                turret.targetAngle = fieldHoldAngle;
+                if (!justResynced) {
+                    if (gamepad2.dpad_up) fieldHoldAngle = 0;
+                    else if (gamepad2.dpad_down) fieldHoldAngle = 180;
+                    else if (Math.abs(gamepad2.left_stick_x) <= 0.1) fieldHoldAngle = Turret.wrapDeg360(angleToGoalDeg + turret.aimOffsetDeg);  // aim at goal + persistent nudge offset when not nudging
+                    // When left_stick_x nudge is active, keep fieldHoldAngle (Turret updates targetAngle, we store it after runTurretGyro)
+                    turret.targetAngle = fieldHoldAngle;
+                }
             }
             // Alliance can be changed during run: goal/start update (pose not reset)
             if (gamepad1.dpad_left) { mode = true; applyAllianceMode(); }
             else if (gamepad1.dpad_right) { mode = false; applyAllianceMode(); }
-            // --- 3. Close launching zone: triangle (-72,72)→(0,0)→(-72,-72). Rumble + LED when in zone with 2+ artifacts. ---
+            // --- 3. Close + far zone triangles. Rumble + LED when in either zone with 2+ artifacts. ---
             int artifactCount = countArtifacts();
             boolean inCloseTriangle = ShootingZones.isInCloseLaunchTriangle(pose.position.x, pose.position.y);
-            boolean readyToShoot = inCloseTriangle && artifactCount >= 2;
+            boolean inFarTriangle = ShootingZones.isInFarZoneTriangle(pose.position.x, pose.position.y);
+            boolean readyToShoot = (inCloseTriangle || inFarTriangle) && artifactCount >= 2;
             if (readyToShoot && !prevReadyToShoot) gamepad2.rumble(closeZoneRumbleMs);  // edge-triggered so we don't rumble every loop
             prevReadyToShoot = readyToShoot;
-            led.setPosition(readyToShoot ? ledPosReady : ledPosNormal);  // GoBilda LED: PWM 0–1 maps to colors (tune per Product Insight #4)
+            // LED: use at least 2 balls (c*.blue() > 150). If 2+ balls → ready/normal; else red.
+            boolean inZone = inCloseTriangle || inFarTriangle;
+            double ledPos;
+            if (intake.hasAtLeastTwoBalls()) {
+                ledPos = inZone ? LedConfig.posReady : LedConfig.posNormal;
+            } else {
+                ledPos = LedConfig.posRed;
+            }
+            led.setPosition(ledPos);
             initTelemetry();
             telemetryAprilTag();
             getMotif();
-            drivetrain.driveRobotCentric();
+            // Drive: Road Runner active; when sticks idle, position hold resists pushes
+            driveWithPositionHold(pose);
+            // Turret re-sync: X or Start (fixes gear skip). Center turret first, then press.
+            // Encoder reset = turret at 0° robot-relative. Target = angle to goal so turret aims at goal.
+            if (gamepad2.xWasPressed() || (gamepad2.start && !prevStart)) {
+                turret.resyncEncoder();
+                justResynced = true;
+                if (lockedOn) {
+                    manualTurretDeg = 0;
+                    turret.targetAngle = k;  // manual: hold center
+                } else {
+                    turret.targetAngle = Turret.wrapDeg360(angleToGoalDeg + turret.aimOffsetDeg);  // aim: angle to goal
+                    fieldHoldAngle = turret.targetAngle;
+                }
+                gamepad2.rumble(closeZoneRumbleMs);  // feedback that it worked
+            } else {
+                justResynced = false;
+            }
+            prevStart = gamepad2.start;
             if (lockedOn) turret.runTurretNoGyro(k);
             else {
                 turret.runTurretGyro();
@@ -345,6 +393,10 @@ public class MainDrive extends LinearOpMode {
                     ShootingZones.closeTriX1, ShootingZones.closeTriY1,
                     ShootingZones.closeTriX2, ShootingZones.closeTriY2,
                     ShootingZones.closeTriX3, ShootingZones.closeTriY3, "#80E27E");
+            Drawing.drawFarZoneTriangle(packet.fieldOverlay(),
+                    ShootingZones.farTriX1, ShootingZones.farTriY1,
+                    ShootingZones.farTriX2, ShootingZones.farTriY2,
+                    ShootingZones.farTriX3, ShootingZones.farTriY3, "#4FC3F7");
             Drawing.drawFarZoneCircle(packet.fieldOverlay(), goalX, goalY, ShootingZones.farMaxIn, "#4FC3F7");
             ShootingZones.Zone shootingZone = ShootingZones.getShootingZone(pose.position.x, pose.position.y, goalX, goalY);
             boolean inField = ShootingZones.isInsideField(pose.position.x, pose.position.y);
@@ -376,6 +428,7 @@ public class MainDrive extends LinearOpMode {
             packet.put("turret_robot_deg", turret.getTurretAngleRobot());
             packet.put("field_hold_deg", fieldHoldAngle);
             packet.put("vel_comp_on", turretVelocityCompensation && turretVelocityCompGain != 0);
+            packet.put("position_hold", positionHoldEnabled);
             packet.put("launcher_mode", airSortActive ? "airsort (fast/slow)" : (IntakeV2.manualMode ? "manual (Dashboard)" : "auto (from distance)"));
             packet.put("airsort_on", airSortActive);
             if (airSortActive) {
@@ -507,6 +560,30 @@ public class MainDrive extends LinearOpMode {
         //visionPortal.setProcessorEnabled(aprilTag, true);
 
     }   // end method initAprilTag()
+    /**
+     * Drive with Road Runner. When sticks idle (below deadband): zero power so BRAKE mode resists.
+     * Standard approach per Road Runner teleop—odometry feedback causes noise-driven movement.
+     */
+    private void driveWithPositionHold(Pose2d pose) {
+        double x = gamepad1.left_stick_x;
+        double y = -gamepad1.left_stick_y;
+        double turn = gamepad1.right_stick_x;
+        // Apply DriveTrain toggles (XYtoggle, Rtoggle) if we ever add a way to trigger them
+        if (drivetrain.getXToggle()) { x *= 0.25; y *= 0.25; }
+        if (drivetrain.getRToggle()) turn *= 0.25;
+        double db = positionHoldDeadband;
+        boolean idle = positionHoldEnabled
+                && Math.abs(x) < db && Math.abs(y) < db && Math.abs(turn) < db;
+        if (idle) {
+            mecanumDrive.setDrivePowers(new PoseVelocity2d(new Vector2d(0, 0), 0));
+        } else {
+            PoseVelocity2d vel = new PoseVelocity2d(
+                    new Vector2d(y * driveScale, -x * driveScale),
+                    -turn * driveScale);
+            mecanumDrive.setDrivePowers(vel);
+        }
+    }
+
     /** Sets start pose and goal from current alliance mode (red vs blue). Called in init and when dpad L/R pressed. */
     private void applyAllianceMode() {
         if (mode) {
@@ -531,6 +608,7 @@ public class MainDrive extends LinearOpMode {
         // --- 2. Drive ---
         telemetry.addLine("");
         telemetry.addLine("--- Drive ---");
+        telemetry.addData("Position hold", positionHoldEnabled ? "ON (idle=brake)" : "OFF");
         telemetry.addData("X toggle (strafe)", drivetrain.getXToggle());
         telemetry.addData("R toggle (rotate)", drivetrain.getRToggle());
 
@@ -542,6 +620,7 @@ public class MainDrive extends LinearOpMode {
         telemetry.addData("Target (hold) field deg", turret.targetAngle);
             telemetry.addData("Aim offset (nudge) deg", turret.aimOffsetDeg);
         telemetry.addData("Lock-on", lockedOn);
+        telemetry.addData("Turret re-sync", "X or Start (center first)");
 
         // --- 4. Intake / launcher ---
         telemetry.addLine("");
@@ -571,43 +650,31 @@ public class MainDrive extends LinearOpMode {
         telemetry.addData("Hood", intake.getHood());
         telemetry.addData("Comp (calcShot)", intake.calcShot(IntakeV2.getHeading()));
         telemetry.addData("Color R/G/B", "%d %d %d", intake.c3.red(), intake.c3.green(), intake.c3.blue());
+        telemetry.addData("c3 RGB sum", intake.getC3RgbSum());
+        telemetry.addData("Ball at launcher (blocks transfer)", intake.getBallAtLauncher());
+        telemetry.addData("G1 right trigger", "%.2f (intake+transfer when >0.25)", gamepad1.right_trigger);
 
         telemetry.update();
     }
     /**
-     * Lock-on: Y = enable (freeze current heading as k for turret). B = disable.
-     * When locked on, vision updates targetAngle so turret tracks AprilTag bearing (IDs 20 or 24).
+     * Manual turret mode: Y = enable, B = disable.
+     * When on, gamepad2 left stick X controls turret (robot-relative). Limit ±170°.
      */
     private void lockOn() {
-        List<AprilTagDetection> currentDetections = aprilTag.getDetections();
         if (gamepad2.yWasPressed() && !lockedOn) {
             lockedOn = true;
-            // Use turret's Pinpoint heading (degrees); turret.runTurretGyro() already ran this loop so botHeading is current
             k = turret.botHeading;
+            manualTurretDeg = turret.getTurretAngleRobot();  // start from current position
         } else if (gamepad2.bWasPressed() && lockedOn) {
             lockedOn = false;
         }
-        for (AprilTagDetection detection : currentDetections) {
-            // Rumble when aimed at target tag (bearing within 2°)
-            if (detection.metadata != null && Math.abs(detection.ftcPose.bearing) < 2 && (detection.id == 20 || detection.id == 24)) {
-                gamepad2.rumble(500);
-            }
-
-            // Lock-on: set turret target so it tracks the tag. Bearing = degrees from camera center to tag (positive = tag left).
-            if (detection.metadata != null && lockedOn && (detection.id == 20 || detection.id == 24)) {
-                double error = detection.ftcPose.bearing;
-                final double deadbandDeg = 1.5;
-                final double gain = 0.6;
-                final double maxStepDeg = 8.0;
-                if (Math.abs(error) > deadbandDeg) {
-                    double step = -error * gain;  // negate so tag left → turret turns left (field angle decreases)
-                    if (step > maxStepDeg) step = maxStepDeg;
-                    if (step < -maxStepDeg) step = -maxStepDeg;
-                    turret.setAngle(turret.targetAngle + step);
-                } else {
-                    turret.setAngle(turret.targetAngle); // hold when on target
-                }
-            }
+        if (lockedOn) {
+            if (gamepad2.aWasPressed()) manualTurretDeg = 0;  // A = center turret
+            // X / Start re-sync handled above (resyncEncoder + manualTurretDeg = 0)
+            final double manualDegPerUnit = 4.0;
+            manualTurretDeg += gamepad2.left_stick_x * manualDegPerUnit;  // stick right = turret right (Turret.manualModeInvert flips power if needed)
+            manualTurretDeg = Math.max(-Turret.manualModeLimitDeg, Math.min(Turret.manualModeLimitDeg, manualTurretDeg));
+            turret.setAngle(k + manualTurretDeg);
         }
     }
 

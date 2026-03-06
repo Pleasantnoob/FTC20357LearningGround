@@ -3,21 +3,15 @@ package org.firstinspires.ftc.teamcode.Toros.Drive;
 
 import com.arcrobotics.ftclib.drivebase.MecanumDrive;
 import com.arcrobotics.ftclib.gamepad.GamepadEx;
-import com.arcrobotics.ftclib.hardware.RevIMU;
-import com.arcrobotics.ftclib.hardware.motors.Motor;
-import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
+import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
-import com.qualcomm.robotcore.hardware.IMU;
 
-import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
-
+@Disabled // Control Hub IMU removed; update to use Pinpoint for heading
 @TeleOp(name = "FieldCentric")
 public class DriveFieldCentric extends LinearOpMode {
-
-    IMU imu;
     private DcMotor FrontLeftMotor;
     private DcMotor BackLeftMotor;
     private DcMotor FrontRightMotor;
@@ -53,24 +47,12 @@ public class DriveFieldCentric extends LinearOpMode {
             BackRightMotor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
 
 
-            imu = hardwareMap.get(IMU.class, "imu");
-            IMU.Parameters parameters = new IMU.Parameters(new RevHubOrientationOnRobot(
-                    RevHubOrientationOnRobot.LogoFacingDirection.FORWARD,
-                    RevHubOrientationOnRobot.UsbFacingDirection.UP
-            ));
-
-            imu.initialize(parameters);
-            imu.resetYaw();
             while (opModeIsActive()){
-
-                if(gamepad1.options){
-                    imu.resetYaw();
-                }
                 double y = -gamepad1.left_stick_y;
                 double x = -gamepad1.left_stick_x;
                 double rx = gamepad1.right_stick_x;
 
-                double botHeading = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS);
+                double botHeading = 0; // TODO: use Pinpoint/MecanumDrive for heading
                 double rotX = x * Math.cos(botHeading) - y * Math.sin(botHeading);
                 double rotY = x * Math.sin(botHeading) + y * Math.cos(botHeading);
                 rotX = -rotX*1.1;

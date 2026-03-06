@@ -5,10 +5,11 @@ import com.acmerobotics.roadrunner.Vector2d;
 
 /**
  * Shooting zone boundaries and field bounds. Uses robot pose (odometry) to determine
- * whether the robot is in the close launching triangle or far distance band.
+ * whether the robot is in the close launching triangle, far zone triangle, or far distance band.
  *
  * Field: 12 ft × 12 ft → X and Y from -72 to +72 inches (origin at center).
- * Close launching zone: triangle (-72, 72) → (0, 0) → (-72, -72). Far zone by distance from goal.
+ * Close launching zone: triangle (-72, 72) → (0, 0) → (-72, -72).
+ * Far zone triangle: little triangle in back of field (47, 0) → (72, 24) → (72, -24).
  */
 @Config
 public final class ShootingZones {
@@ -21,7 +22,12 @@ public final class ShootingZones {
     public static double closeTriX2 = 0.0, closeTriY2 = 0.0;      // center
     public static double closeTriX3 = -72.0, closeTriY3 = -72.0; // bottom-left
 
-    /** Far shooting zone: distance from goal in [farMinIn, farMaxIn]. */
+    /** Far zone triangle: little triangle in back of field. (47,0) → (72,24) → (72,-24). */
+    public static double farTriX1 = 47.0, farTriY1 = 0.0;     // left vertex
+    public static double farTriX2 = 72.0, farTriY2 = 24.0;    // top-right
+    public static double farTriX3 = 72.0, farTriY3 = -24.0;   // bottom-right
+
+    /** Far shooting zone (distance band): distance from goal in [farMinIn, farMaxIn]. */
     public static double farMinIn = 48.0;
     public static double farMaxIn = 120.0;
 
@@ -46,6 +52,19 @@ public final class ShootingZones {
         if (Math.signum(s2) != Math.signum(p2) && p2 != 0) return false;
         double s3 = crossSign(closeTriX3, closeTriY3, closeTriX1, closeTriY1, closeTriX2, closeTriY2);
         double p3 = crossSign(closeTriX3, closeTriY3, closeTriX1, closeTriY1, x, y);
+        return Math.signum(s3) == Math.signum(p3) || p3 == 0;
+    }
+
+    /** True if (x, y) is inside the far zone triangle (back of field). Same point-in-triangle logic as close. */
+    public static boolean isInFarZoneTriangle(double x, double y) {
+        double s1 = crossSign(farTriX1, farTriY1, farTriX2, farTriY2, farTriX3, farTriY3);
+        double p1 = crossSign(farTriX1, farTriY1, farTriX2, farTriY2, x, y);
+        if (Math.signum(s1) != Math.signum(p1) && p1 != 0) return false;
+        double s2 = crossSign(farTriX2, farTriY2, farTriX3, farTriY3, farTriX1, farTriY1);
+        double p2 = crossSign(farTriX2, farTriY2, farTriX3, farTriY3, x, y);
+        if (Math.signum(s2) != Math.signum(p2) && p2 != 0) return false;
+        double s3 = crossSign(farTriX3, farTriY3, farTriX1, farTriY1, farTriX2, farTriY2);
+        double p3 = crossSign(farTriX3, farTriY3, farTriX1, farTriY1, x, y);
         return Math.signum(s3) == Math.signum(p3) || p3 == 0;
     }
 

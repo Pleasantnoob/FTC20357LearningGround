@@ -23,6 +23,7 @@ import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
 import org.firstinspires.ftc.teamcode.RR.MecanumDrive;
+import org.firstinspires.ftc.teamcode.RR.PoseBridge;
 import org.firstinspires.ftc.teamcode.Toros.Drive.MainDrive;
 import org.firstinspires.ftc.teamcode.Toros.Drive.Subsystems.Turret;
 
@@ -153,12 +154,15 @@ public class Auto2025RedNearOdometryAim extends LinearOpMode {
             @Override
             public boolean run(@NonNull TelemetryPacket telemetryPacket) {
                 if (!init) {
-                    trans.setPower(-0.18);
-                    intake.setPower(-0.55);
+                    intake.setPower(-1);
+                    trans.setPower(-0.15);
                     init = true;
                     timer = new ElapsedTime();
                 }
-                return timer.seconds() < 3;
+                if (timer.seconds() < 3) return true;
+                intake.setPower(0);
+                trans.setPower(0);
+                return false;
             }
         }
 
@@ -190,12 +194,14 @@ public class Auto2025RedNearOdometryAim extends LinearOpMode {
             @Override
             public boolean run(@NonNull TelemetryPacket telemetryPacket) {
                 if (!init) {
-                    intake.setPower(-0.57);
+                    intake.setPower(-1);
+                    trans.setPower(-0.15);
                     init = true;
                     timer = new ElapsedTime();
                 }
                 if (timer.seconds() < 1.9) return true;
                 intake.setPower(0);
+                trans.setPower(0);
                 return false;
             }
         }
@@ -244,6 +250,10 @@ public class Auto2025RedNearOdometryAim extends LinearOpMode {
 
         @Override
         public boolean run(@NonNull TelemetryPacket p) {
+            if (!autoRunning) {
+                turret.turretPow(0);
+                return false;
+            }
             drive.updatePoseEstimate();
             Pose2d pose = drive.localizer.getPose();
             double dx = goalX - pose.position.x;
@@ -252,7 +262,7 @@ public class Auto2025RedNearOdometryAim extends LinearOpMode {
             turret.botHeading = Turret.wrapDeg360(Math.toDegrees(pose.heading.toDouble()));
             turret.targetAngle = angleToGoalDeg;
             turret.runTurretGyro();
-            return autoRunning;
+            return true;
         }
     }
 
@@ -263,6 +273,7 @@ public class Auto2025RedNearOdometryAim extends LinearOpMode {
         Launcher launcher = new Launcher(hardwareMap);
         Intake intakeSub = new Intake(hardwareMap);
         Turret turret = new Turret(hardwareMap, gamepad2);
+        Servo led = hardwareMap.get(Servo.class, "LED");
 
         telemetry.addData(">", "Red Near Odometry Aim Test: same paths & shoot times, turret aims at goal whole time");
         telemetry.update();
@@ -301,14 +312,14 @@ public class Auto2025RedNearOdometryAim extends LinearOpMode {
         Action mainSequence = new SequentialAction(
                 tab1,
                 launcher.fireBallPre(),
-                new ParallelAction(tab2, intakeSub.intakeRun(), intakeSub.transRun()),
+                new ParallelAction(tab2, intakeSub.intakeRun()),
                 tab3,
                 launcher.fireBall(),
                 new ParallelAction(
                         tab4,
                         new SequentialAction(
                                 new SleepAction(1.1),
-                                new ParallelAction(intakeSub.intakeRun(), intakeSub.transRun())
+                                new ParallelAction(intakeSub.intakeRun())
                         )
                 ),
                 tab5,
@@ -317,7 +328,7 @@ public class Auto2025RedNearOdometryAim extends LinearOpMode {
                         tab6,
                         new SequentialAction(
                                 new SleepAction(2.1),
-                                new ParallelAction(intakeSub.intakeRun(), intakeSub.transRun())
+                                new ParallelAction(intakeSub.intakeRun())
                         )
                 ),
                 tab7,
@@ -331,6 +342,7 @@ public class Auto2025RedNearOdometryAim extends LinearOpMode {
                 new ParallelAction(
                         new RunUntilFlagAction(launcher.revMotor(), () -> autoRunning),
                         new TurretAimAction(drive, turret, MainDrive.redGoalX, MainDrive.redGoalY),
+                        new LedFadeAction(led, () -> autoRunning),
                         mainSequence
                 )
         );
@@ -338,6 +350,9 @@ public class Auto2025RedNearOdometryAim extends LinearOpMode {
         launch.setPower(0);
         trans.setPower(0);
         intake.setPower(0);
+
+        PoseBridge.save(drive.localizer.getPose());
+        PoseBridge.saveAlliance(false);  // Red
 
         while (opModeIsActive()) {
             telemetry.addData("Pose", drive.localizer.getPose());

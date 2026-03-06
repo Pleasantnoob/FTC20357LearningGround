@@ -4,7 +4,6 @@ import androidx.annotation.NonNull;
 
 import com.acmerobotics.dashboard.telemetry.TelemetryPacket;
 import com.acmerobotics.roadrunner.Action;
-import com.acmerobotics.roadrunner.InstantAction;
 import com.acmerobotics.roadrunner.ParallelAction;
 import com.acmerobotics.roadrunner.Pose2d;
 import com.acmerobotics.roadrunner.SequentialAction;
@@ -12,617 +11,325 @@ import com.acmerobotics.roadrunner.SleepAction;
 import com.acmerobotics.roadrunner.TranslationalVelConstraint;
 import com.acmerobotics.roadrunner.Vector2d;
 import com.acmerobotics.roadrunner.ftc.Actions;
-import com.arcrobotics.ftclib.controller.PIDController;
-import com.arcrobotics.ftclib.controller.wpilibcontroller.SimpleMotorFeedforward;
-import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
-import com.qualcomm.robotcore.hardware.ColorSensor;
-import com.qualcomm.robotcore.hardware.DcMotor;
-import com.qualcomm.robotcore.hardware.DcMotorEx;
-import com.qualcomm.robotcore.hardware.DcMotorSimple;
-import com.qualcomm.robotcore.hardware.HardwareMap;
-import com.qualcomm.robotcore.hardware.IMU;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
-import org.firstinspires.ftc.robotcore.external.hardware.camera.BuiltinCameraDirection;
-import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
-import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.teamcode.RR.MecanumDrive;
-import org.firstinspires.ftc.vision.VisionPortal;
-import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
+import org.firstinspires.ftc.teamcode.RR.PoseBridge;
+import org.firstinspires.ftc.teamcode.Toros.Drive.MainDrive;
+import org.firstinspires.ftc.teamcode.Toros.Drive.Subsystems.IntakeV2;
+import org.firstinspires.ftc.teamcode.Toros.Drive.Subsystems.Turret;
 import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 
-import java.util.ArrayList;
-import java.util.List;
-
+/**
+ * Red far autonomous. Uses ONLY redFar trajectories from MeepMeep (mirror of blueFar: positive Y).
+ * Start: (60, 10, 90°). Same actions as Red Near (IntakeV2, Turret, RevAndAim, Shoot).
+ */
 @Autonomous(name = "Auto2025RedFar")
 public class Auto2025RedFar extends LinearOpMode {
-    public DcMotorEx launch, turretMotor, trans;
-    public Servo hood;
-    public ColorSensor c1,c2,c3;
-    private DcMotor intake;
-    private PIDController controller;
 
-    public static double p1 = 0.0045, i1 = 0, d1 = 0;
-    public static double kS1 = 0.001, kV1 = 0.00055, kA1 = -0;
-    public static double accel = 20;
+    /** Goal for aiming; match MainDrive.redGoalX/Y. */
+    private static final double GOAL_X = MainDrive.redGoalX;
+    private static final double GOAL_Y = MainDrive.redGoalY;
 
-    public static double p2 = 0.00625 , i2 = 0.0, d2 = 0.00055;
-    public static double kS2 = 0, kV2 = 0.000125, kA2 = 0;
+    /** Instant: turn intake on. Use before drive-to-corner segments. */
+    private static class StartIntakeAction implements Action {
+        private final IntakeV2 intakeV2;
 
-    double gearRatio = 2.0 / 5.0;
-    public static int targetVel = -1510;
-    public static int targetAngle = 0;
-
-
-    public class Launcher {
-        public Launcher(HardwareMap hardwareMap) {
-            launch = hardwareMap.get(DcMotorEx.class, "launch");
-            launch.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-            controller = new PIDController(p1,i1,d1);
-            intake = hardwareMap.get(DcMotor.class, "intake");
-            intake.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-            trans = hardwareMap.get(DcMotorEx.class, "trans");
-            trans.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-            hood = hardwareMap.get(Servo.class, "hood");
+        StartIntakeAction(IntakeV2 intakeV2) {
+            this.intakeV2 = intakeV2;
         }
-
-        public class launcherAction implements Action {
-            private boolean init = false;
-            ElapsedTime timer = new ElapsedTime();
-            //timer.reset();
-            @Override
-
-            public boolean run(@NonNull TelemetryPacket telemetryPacket) {
-
-                telemetry.addData("Launch Velocoty", launch.getVelocity());
-                telemetry.addData("Launch pwer", launch.getPower());
-                telemetry.addData("timer", timer);
-
-
-                telemetry.update();
-                if(!init) {
-                    timer.reset();
-                    init = true;
-                    hood.setPosition(0.9);
-                }
-                if (launch.getVelocity() <= -1477) { //1585
-
-                    trans.setPower(-1);
-                    intake.setPower(-0.57);
-
-                } else if (launch.getVelocity() >= -1477) {
-                    trans.setPower(0);
-                    intake.setPower(0);
-                }
-                telemetryPacket.put("time",timer.seconds());
-                if(timer.seconds() < 4){
-                    return true;
-                }
-                else{
-                    launch.setPower(0);
-                    trans.setPower(0);
-                    intake.setPower(0);
-                    return false;
-                }
-            }
-        }
-
-        public Action fireBall() {
-            return new launcherAction();
-        }
-
-        public class launcherActionPre implements Action {
-            private boolean init = false;
-            ElapsedTime timer = new ElapsedTime();
-            //timer.reset();
-            @Override
-
-            public boolean run(@NonNull TelemetryPacket telemetryPacket) {
-
-                telemetry.addData("Launch Velocoty", launch.getVelocity());
-                telemetry.addData("Launch pwer", launch.getPower());
-                telemetry.addData("timer", timer);
-
-
-                telemetry.update();
-                if(!init) {
-                    timer.reset();
-                    init = true;
-                    hood.setPosition(0.9);
-                }
-                if (launch.getVelocity() <= -1477) { //1585
-
-                    trans.setPower(-1);
-                    intake.setPower(-0.57);
-
-                } else if (launch.getVelocity() >= -1477) {
-                    trans.setPower(0);
-                    intake.setPower(0);
-                }
-                telemetryPacket.put("time",timer.seconds());
-                if(timer.seconds() < 7){
-                    return true;
-                }
-                else{
-                    launch.setPower(0);
-                    trans.setPower(0);
-                    intake.setPower(0);
-                    return false;
-                }
-            }
-        }
-
-        public Action fireBallPre() {
-            return new launcherActionPre();
-        }
-
-        public class revLaunch implements Action{
-            boolean init = false;
-            @Override
-            public boolean run(@NonNull TelemetryPacket telemetryPacket) {
-                if(!init){
-                    controller.setPID(p1, i1, d1);
-                }
-                double launchVel = launch.getVelocity();
-                SimpleMotorFeedforward feedforward = new SimpleMotorFeedforward(kS1, kV1, kA1);
-                double pid = controller.calculate(launchVel, targetVel);
-                double ff = feedforward.calculate(targetVel,accel);
-                double power = pid + ff;
-                launch.setPower(power);
-                return true;
-            }
-        }
-        public Action revMotor() {return  new revLaunch();}
-    }
-
-    IMU imu;
-    /** Turret for autonomous. Odometry: 384.5 ticks/rev, gear 2/5. targetAngle in degrees (robot-relative). */
-    public class Turret {
-        public Turret(HardwareMap hardwareMap) {
-            turretMotor = hardwareMap.get(DcMotorEx.class, "turret");
-            turretMotor.setDirection(DcMotorSimple.Direction.REVERSE);
-            turretMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-            turretMotor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-            turretMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-            controller = new PIDController(p2, i2, d2);
-            imu = hardwareMap.get(IMU.class, "imu");
-            IMU.Parameters parameters = new IMU.Parameters(new RevHubOrientationOnRobot(
-                    RevHubOrientationOnRobot.LogoFacingDirection.FORWARD,
-                    RevHubOrientationOnRobot.UsbFacingDirection.UP
-            ));
-            imu.initialize(parameters);
-        }
-
-        public class turretAction implements Action {
-            private boolean init = false;
-
-            @Override
-            public boolean run(@NonNull TelemetryPacket telemetryPacket) {
-                if (!init) {
-                    controller.setPID(p2, i2, d2);
-                    init = true;
-                }
-                double botHeading = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES);
-                double currentAngle = (turretMotor.getCurrentPosition() / 384.5) * 360 * gearRatio;
-                double targetPos = (384.5 * targetAngle) / 360 * (5.0 / 2.0);
-                double turretPos = turretMotor.getCurrentPosition();
-                SimpleMotorFeedforward feedforward = new SimpleMotorFeedforward(kS2, kV2, kA2);
-                double pid2 = controller.calculate(turretPos, targetPos);
-                double ff = feedforward.calculate(0);
-                double power = pid2 + ff;
-                turretMotor.setPower(power);
-                return true;
-            }
-        }
-
-        public Action turretGo() { return new turretAction(); }
-        public Action changeAngle(int target) { return new InstantAction(() -> targetAngle = target); }
-    }
-
-    public class sensors implements Action{
 
         @Override
-        public boolean run(@NonNull TelemetryPacket telemetryPacket) {
+        public boolean run(@NonNull TelemetryPacket p) {
+            intakeV2.setIntakeMotorAuto(-1.0);
+            intakeV2.setTransferMotorAuto(0);  // Transfer off when picking up balls (Far autos)
             return false;
         }
     }
 
-    public class Intake {
+    /** Instant: turn intake off. Use before back-to-shoot segments. */
+    private static class StopIntakeAction implements Action {
+        private final IntakeV2 intakeV2;
 
-        public Intake(HardwareMap hardwareMap) {
-            intake = hardwareMap.get(DcMotor.class, "intake");
-            intake.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-            trans = hardwareMap.get(DcMotorEx.class, "trans");
-            trans.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-            //add color sensor
+        StopIntakeAction(IntakeV2 intakeV2) {
+            this.intakeV2 = intakeV2;
         }
-        public class intakeAction implements Action {
-            private boolean init = false;
-            ElapsedTime timer;
-
-            @Override
-
-            public boolean run(@NonNull TelemetryPacket telemetryPacket) {
-                if (!init) {
-                    trans.setPower(-0.18);
-                    intake.setPower(-0.55);
-                    init = true;
-                    timer = new ElapsedTime();
-                }
-
-                if(timer.seconds() < 3 ){
-                    return true;
-                }
-                else{
-                    trans.setPower(0);
-                    intake.setPower(0);
-                    return false;
-                }
-            }
-        }
-        public Action takeBall() { return new intakeAction(); }
-
-        public class runTrans implements Action{
-            boolean init = false;
-            ElapsedTime timer;
-            @Override
-            public boolean run(@NonNull TelemetryPacket telemetryPacket) {
-                if(!init){
-                    timer = new ElapsedTime();
-                    trans.setPower(0.1);
-                    init = true;
-                }
-                if(timer.seconds() < 0.4){
-                    return true;
-                }
-                else{
-                    trans.setPower(0);
-                    return false;
-
-                }
-            }
-        }
-        public Action transRun(){return new runTrans();}
-
-        public class runIntake implements Action {
-            private boolean init = false;
-            ElapsedTime timer;
-
-            @Override
-
-            public boolean run(@NonNull TelemetryPacket telemetryPacket) {
-                if (!init) {
-                    intake.setPower(-0.57);
-                    init = true;
-                    timer = new ElapsedTime();
-                }
-
-                if(timer.seconds() < 5.1){
-                    return true;
-                }
-                else{
-                    intake.setPower(0);
-                    return false;
-                }
-            }
-        }
-        public Action intakeRun(){return new runIntake();}
-    }
-    public class colorSensors {
-        public colorSensors(HardwareMap hardwareMap){
-            c1 = hardwareMap.get(ColorSensor.class,"c1");
-            c2 = hardwareMap.get(ColorSensor.class,"c2");
-            c3 = hardwareMap.get(ColorSensor.class,"c3");
-        }
-        public class flash implements Action {
-            private boolean init = false;
-
-
-            @Override
-            public boolean run(@NonNull TelemetryPacket telemetryPacket) {
-                //logic here for color sensors
-                return stored.size() == 3;
-
-            }
-        }
-    }
-
-    public class scan implements Action {
-        private boolean init = false;
 
         @Override
-        public boolean run(@NonNull TelemetryPacket telemetryPacket) {
-            if (!init) {
-                List<AprilTagDetection> currentDetections = aprilTag.getDetections();
-                initAprilTag();
-                for(AprilTagDetection detection: currentDetections){
-                    if(detection != null){
-                        if (detection.id == 21){
-                            motif.add("g");
-                            motif.add("p");
-                            motif.add("p");
-                            //turn table swap to position of green
-                            //swap to purple
-                            //swap to purple
-                        } else if (detection.id == 22) {
-                            motif.add("p");
-                            motif.add("g");
-                            motif.add("p");
-                            //swap to purple
-                            //swap to green
-                            //swap to purple
-                        }
-                        else if (detection.id == 23){
-                            motif.add("p");
-                            motif.add("p");
-                            motif.add("g");
-                            //swap to purple
-                            //swap to purple
-                            //swap to green
-                        }
-                    }
-                }
-
-            }
-            return motif.size() != 3;
+        public boolean run(@NonNull TelemetryPacket p) {
+            intakeV2.setIntakeMotorAuto(0);
+            intakeV2.setTransferMotorAuto(0);
+            return false;
         }
     }
 
-    public Action scanMotif(){return new scan();}
-    private static final boolean USE_WEBCAM = true;  // true for webcam, false for phone camera
-
-    /**
-     * The variable to store our instance of the AprilTag processor.
-     */
     private AprilTagProcessor aprilTag;
+    private volatile boolean autoRunning = true;
+    private volatile boolean isShooting = false;
 
-    /**
-     * The variable to store our instance of the vision portal.
-     */
-
-    private VisionPortal visionPortal;
-
-    ArrayList<String> stored = new ArrayList<>();
-    ArrayList<String> motif = new ArrayList<>();
     @Override
     public void runOpMode() {
-
-
-//        initAprilTag();
-        Pose2d initialPose = new Pose2d(60, 12, Math.toRadians(90));
+        // Start pose = redFar from MeepMeep (60,10,90) = mirror of blueFar (60,-10,270)
+        Pose2d initialPose = new Pose2d(60, 10, Math.toRadians(90));
         MecanumDrive drive = new MecanumDrive(hardwareMap, initialPose);
-        Launcher launcher = new Launcher(hardwareMap);
-        Turret turret = new Turret(hardwareMap);
-        Intake intake = new Intake(hardwareMap);
-        // Wait for the DS start button to be touched.
-        telemetry.addData("DS preview on/off", "3 dots, Camera Stream");
-        telemetry.addData(">", "Touch START to start OpMode");
-        telemetry.update();
+        drive.localizer.setPose(initialPose);
+        aprilTag = new AprilTagProcessor.Builder().build();
+        IntakeV2 intake = new IntakeV2(hardwareMap, gamepad1, gamepad2, aprilTag);
+        Turret turret = new Turret(hardwareMap, gamepad2);
+        Servo led = hardwareMap.get(Servo.class, "LED");
 
+        telemetry.addData(">", "Red Far. Trajectories from redFar (MeepMeep).");
+        telemetry.update();
         waitForStart();
 
+        // Trajectories from redFar (MeepMeep) = mirror of blueFar (positive Y)
+        // shoot
         Action tab1 = drive.actionBuilder(initialPose)
-                .strafeToLinearHeading(new Vector2d(60,62), Math.toRadians(90))
-
+                .strafeToLinearHeading(new Vector2d(60, 62), Math.toRadians(90))
                 .build();
-        Action tab2 = drive.actionBuilder(new Pose2d(60,62,Math.toRadians(90)))//set var constraint later
-
-                .strafeToLinearHeading(new Vector2d(50,64), Math.toRadians(90))
-                .strafeToLinearHeading(new Vector2d(60,50), Math.toRadians(90))
-                .strafeToLinearHeading(new Vector2d(60,62), Math.toRadians(90))
-                .strafeToLinearHeading(new Vector2d(50,67), Math.toRadians(90))
-
+        // run intake
+        Action tab2 = drive.actionBuilder(new Pose2d(60, 62, Math.toRadians(90)))
+                .strafeToLinearHeading(new Vector2d(50, 62), Math.toRadians(90))
+                .strafeToLinearHeading(new Vector2d(60, 50), Math.toRadians(90))
+                .strafeToLinearHeading(new Vector2d(60, 62), Math.toRadians(90))
+                .strafeToLinearHeading(new Vector2d(50, 62), Math.toRadians(90))
                 .build();
-        Action tab3 = drive.actionBuilder(new Pose2d(50,60,Math.toRadians(90)))
-                //.waitSeconds(1.5)
-                .strafeToLinearHeading(new Vector2d(60,20), Math.toRadians(90), new TranslationalVelConstraint(20))
-
+        // stop intake
+        Action tab3 = drive.actionBuilder(new Pose2d(50, 62, Math.toRadians(90)))
+                .strafeToLinearHeading(new Vector2d(60, 20), Math.toRadians(90), new TranslationalVelConstraint(100))
                 .build();
-        Action tab4 = drive.actionBuilder(new Pose2d(60,15,Math.toRadians(90)))
-                //.waitSeconds(5)
-
-                .strafeTo(new Vector2d(55, 40))
-
-//              .waitSeconds(2.5)
+        // shoot, run intake
+        Action tab4 = drive.actionBuilder(new Pose2d(60, 20, Math.toRadians(90)))
+                .strafeTo(new Vector2d(60, 60))
                 .build();
-        Action tab5 = drive.actionBuilder(new Pose2d(14,55,Math.toRadians(90)))
-                .strafeToLinearHeading(new Vector2d(55,12), Math.toRadians(270))
-
+        // shoot
+        Action tab5 = drive.actionBuilder(new Pose2d(60, 60, Math.toRadians(90)))
+                .strafeTo(new Vector2d(60, 20))
                 .build();
-        Action tab6 = drive.actionBuilder(new Pose2d(55,12,Math.toRadians(90)))
-                //.waitSeconds(5)
-                .strafeTo(new Vector2d(50,5), new TranslationalVelConstraint(100.0))
-
-                .strafeTo(new Vector2d(37,50), new TranslationalVelConstraint(100.0))
+        // run intake
+        Action tab6 = drive.actionBuilder(new Pose2d(60, 20, Math.toRadians(90)))
+                .strafeTo(new Vector2d(60, 60))
                 .build();
-        Action tab7 = drive.actionBuilder(new Pose2d(35,50,Math.toRadians(270)))
-                .strafeTo(new Vector2d(-13,13))
+        // shoot
+        Action tab7 = drive.actionBuilder(new Pose2d(60, 60, Math.toRadians(90)))
+                .strafeTo(new Vector2d(60, 20))
                 .build();
-        Action tab8 = drive.actionBuilder(new Pose2d(-13,-13,Math.toRadians(270)))
-                .strafeToLinearHeading(new Vector2d(50,-20), Math.toRadians(270))
+        // park
+        Action tab10 = drive.actionBuilder(new Pose2d(60, 20, Math.toRadians(90)))
+                .strafeTo(new Vector2d(50, 30))
                 .build();
-
 
         if (opModeIsActive()) {
-            Actions.runBlocking(
-                    new ParallelAction(
-                            launcher.revMotor(),
-                            turret.turretGo(),
-                            new SequentialAction(
-                                    turret.changeAngle(-69),
-                                    launcher.fireBallPre(), // +3 (preloaded)
-                                    new ParallelAction(//1st spike,
-                                            intake.intakeRun(),
-                                            intake.transRun(),
-                                            tab1,
-                                            tab2
-
-                                    ),
-                                    tab3, // move to launch
-                                    launcher.fireBall(), // +6
-
-                                    tab4
-                            )
-
-
-                    )
+            try {
+            autoRunning = true;
+            IntakeV2.shootVelToleranceOverride = 15;  // ±15 for Far auto (tighter than default 20)
+            // Rev 4s, shoot preload, then start pathing. Shoot every time we arrive at (60,20).
+            Action mainSequence = new SequentialAction(
+                    new RevAndAimAction(drive, intake, turret, 4.0),
+                    new ShootAction(this, drive, intake, turret, 1.0),
+                    tab1,
+                    new StartIntakeAction(intake),
+                    tab2,
+                    new StopIntakeAction(intake),
+                    tab3,
+                    new RevAndAimAction(drive, intake, turret, 1.0),
+                    new ShootAction(this, drive, intake, turret, 1.0),
+                    new StartIntakeAction(intake),
+                    tab4,
+                    new StopIntakeAction(intake),
+                    tab5,
+                    new RevAndAimAction(drive, intake, turret, 1.0),
+                    new ShootAction(this, drive, intake, turret, 1.0),
+                    new StartIntakeAction(intake),
+                    tab6,
+                    new StopIntakeAction(intake),
+                    tab7,
+                    new RevAndAimAction(drive, intake, turret, 1.0),
+                    new ShootAction(this, drive, intake, turret, 1.0),
+                    tab10,
+                    new StopIntakeAction(intake),
+                    new StopLauncherAction(intake),
+                    new SetFlagAndEndAction()
             );
+            Actions.runBlocking(new ParallelAction(
+                    new TurretAimAction(drive, turret, GOAL_X, GOAL_Y),
+                    new HoodAndFlywheelUpdateAction(drive, intake, GOAL_X, GOAL_Y),
+                    new LedFadeAction(led, () -> autoRunning),
+                    mainSequence
+            ));
+
+            PoseBridge.save(drive.localizer.getPose());
+            PoseBridge.saveAlliance(false);  // Red
+            intake.stopLauncherAuto();
+            intake.runIntakeAuto(false);
 
             while (opModeIsActive()) {
-                telemetry.addData("motif",motif.get(1));
-                //telemetryAprilTag();
-
-                // Push telemetry to the Driver Station.
-                telemetry.addData("Launch Velocoty", launch.getVelocity());
+                telemetry.addData("Pose", drive.localizer.getPose());
                 telemetry.update();
-
-                // Save CPU resources; can resume streaming when needed.
-//                if (gamepad1.dpad_down) {
-//                    visionPortal.stopStreaming();
-//                } else if (gamepad1.dpad_up) {
-//                    visionPortal.resumeStreaming();
-//                }
-
-
-                // Share the CPU.
                 sleep(20);
             }
+            } finally {
+                IntakeV2.shootVelToleranceOverride = 0;  // reset for other opmodes
+            }
+        }
+    }
+
+    private static class RevAndAimAction implements Action {
+        private final MecanumDrive drive;
+        private final IntakeV2 intake;
+        private final Turret turret;
+        private final double duration;
+        private final ElapsedTime timer = new ElapsedTime();
+        private boolean init;
+
+        RevAndAimAction(MecanumDrive drive, IntakeV2 intake, Turret turret, double duration) {
+            this.drive = drive;
+            this.intake = intake;
+            this.turret = turret;
+            this.duration = duration;
         }
 
-        // Save more CPU resources when camera is no longer needed.
-        //visionPortal.close();
+        @Override
+        public boolean run(@NonNull TelemetryPacket p) {
+            if (!init) {
+                timer.reset();
+                init = true;
+            }
+            drive.updatePoseEstimate();
+            Pose2d pose = drive.localizer.getPose();
+            double dx = GOAL_X - pose.position.x;
+            double dy = GOAL_Y - pose.position.y;
+            double dist = Math.hypot(dx, dy);
+            double angleToGoalDeg = Turret.wrapDeg360(Math.toDegrees(Math.atan2(dy, dx)));
+            intake.setHoodAndFlywheelFromDistance(dist);
+            intake.runLauncherAuto(false);
+            turret.botHeading = Turret.wrapDeg360(Math.toDegrees(pose.heading.toDouble()));
+            turret.targetAngle = angleToGoalDeg;
+            turret.runTurretGyro();
+            return timer.seconds() < duration;
+        }
+    }
 
-    }   // end method runOpMode()
+    private static class ShootAction implements Action {
+        private final Auto2025RedFar outer;
+        private final MecanumDrive drive;
+        private final IntakeV2 intake;
+        private final Turret turret;
+        private final double duration;
+        private final ElapsedTime timer = new ElapsedTime();
+        private boolean init;
 
-    /**
-     * Initialize the AprilTag processor.
-     */
-    private void initAprilTag() {
-
-        // Create the AprilTag processor.
-        aprilTag = new AprilTagProcessor.Builder()
-
-                // The following default settings are available to un-comment and edit as needed.
-                //.setDrawAxes(false)
-                //.setDrawCubeProjection(false)
-                //.setDrawTagOutline(true)
-                //.setTagFamily(AprilTagProcessor.TagFamily.TAG_36h11)
-                //.setTagLibrary(AprilTagGameDatabase.getCenterStageTagLibrary())
-                //.setOutputUnits(DistanceUnit.INCH, AngleUnit.DEGREES)
-
-                // == CAMERA CALIBRATION ==
-                // If you do not manually specify calibration parameters, the SDK will attempt
-                // to load a predefined calibration for your camera.
-                //.setLensIntrinsics(578.272, 578.272, 402.145, 221.506)
-                // ... these parameters are fx, fy, cx, cy.
-
-                .build();
-
-        // Adjust Image Decimation to trade-off detection-range for detection-rate.
-        // eg: Some typical detection data using a Logitech C920 WebCam
-        // Decimation = 1 ..  Detect 2" Tag from 10 feet away at 10 Frames per second
-        // Decimation = 2 ..  Detect 2" Tag from 6  feet away at 22 Frames per second
-        // Decimation = 3 ..  Detect 2" Tag from 4  feet away at 30 Frames Per Second (default)
-        // Decimation = 3 ..  Detect 5" Tag from 10 feet away at 30 Frames Per Second (default)
-        // Note: Decimation can be changed on-the-fly to adapt during a match.
-        //aprilTag.setDecimation(3);
-
-        // Create the vision portal by using a builder.
-        VisionPortal.Builder builder = new VisionPortal.Builder();
-
-        // Set the camera (webcam vs. built-in RC phone camera).
-        if (USE_WEBCAM) {
-            builder.setCamera(hardwareMap.get(WebcamName.class, "Webcam1"));
-        } else {
-            builder.setCamera(BuiltinCameraDirection.BACK);
+        ShootAction(Auto2025RedFar outer, MecanumDrive drive, IntakeV2 intake, Turret turret, double duration) {
+            this.outer = outer;
+            this.drive = drive;
+            this.intake = intake;
+            this.turret = turret;
+            this.duration = duration;
         }
 
-        // Choose a camera resolution. Not all cameras support all resolutions.
-        //builder.setCameraResolution(new Size(640, 480));
-
-        // Enable the RC preview (LiveView).  Set "false" to omit camera monitoring.
-        //builder.enableLiveView(true);
-
-        // Set the stream format; MJPEG uses less bandwidth than default YUY2.
-        //builder.setStreamFormat(VisionPortal.StreamFormat.YUY2);
-
-        // Choose whether or not LiveView stops if no processors are enabled.
-        // If set "true", monitor shows solid orange screen if no processors enabled.
-        // If set "false", monitor shows camera view without annotations.
-        //builder.setAutoStopLiveView(false);
-
-        // Set and enable the processor.
-        builder.addProcessor(aprilTag);
-
-        // Build the Vision Portal, using the above settings.
-        visionPortal = builder.build();
-
-        // Disable or re-enable the aprilTag processor at any time.
-        //visionPortal.setProcessorEnabled(aprilTag, true);
-
-    }   // end method initAprilTag()
-
-
-    /**
-     * Add telemetry about AprilTag detections.
-     */
-    private void telemetryAprilTag() {
-
-        List<AprilTagDetection> currentDetections = aprilTag.getDetections();
-        telemetry.addData("# AprilTags Detected", currentDetections.size());
-
-        // Step through the list of detections and display info for each one.
-        for (AprilTagDetection detection : currentDetections) {
-            if (detection.metadata != null) {
-                telemetry.addLine(String.format("\n==== (ID %d) %s", detection.id, detection.metadata.name));
-                telemetry.addLine(String.format("XYZ %6.1f %6.1f %6.1f  (inch)", detection.ftcPose.x, detection.ftcPose.y, detection.ftcPose.z));
-                telemetry.addLine(String.format("PRY %6.1f %6.1f %6.1f  (deg)", detection.ftcPose.pitch, detection.ftcPose.roll, detection.ftcPose.yaw));
-                telemetry.addLine(String.format("RBE %6.1f %6.1f %6.1f  (inch, deg, deg)", detection.ftcPose.range, detection.ftcPose.bearing, detection.ftcPose.elevation));
-
-            } else {
-                telemetry.addLine(String.format("\n==== (ID %d) Unknown", detection.id));
-                telemetry.addLine(String.format("Center %6.0f %6.0f (pixels)", detection.center.x, detection.center.y));
-
+        @Override
+        public boolean run(@NonNull TelemetryPacket p) {
+            if (!init) {
+                timer.reset();
+                init = true;
+                outer.isShooting = true;
             }
-            if (detection.id == 21){
-                motif.add("g");
-                motif.add("p");
-                motif.add("p");
-                //turn table swap to position of green
-                //swap to purple
-                //swap to purple
-            } else if (detection.id == 22) {
-                motif.add("p");
-                motif.add("g");
-                motif.add("p");
-                //swap to purple
-                //swap to green
-                //swap to purple
+            drive.updatePoseEstimate();
+            Pose2d pose = drive.localizer.getPose();
+            double dx = GOAL_X - pose.position.x;
+            double dy = GOAL_Y - pose.position.y;
+            double dist = Math.hypot(dx, dy);
+            double angleToGoalDeg = Turret.wrapDeg360(Math.toDegrees(Math.atan2(dy, dx)));
+            intake.setHoodAndFlywheelFromDistance(dist);
+            intake.runLauncherAuto(true);
+            turret.botHeading = Turret.wrapDeg360(Math.toDegrees(pose.heading.toDouble()));
+            turret.targetAngle = angleToGoalDeg;
+            turret.runTurretGyro();
+            if (timer.seconds() >= duration) {
+                outer.isShooting = false;
+                return false;
             }
-            else if (detection.id == 23){
-                motif.add("p");
-                motif.add("p");
-                motif.add("g");
-                //swap to purple
-                //swap to purple
-                //swap to green
+            return true;
+        }
+    }
+
+    private static class StopLauncherAction implements Action {
+        private final IntakeV2 intake;
+
+        StopLauncherAction(IntakeV2 intake) {
+            this.intake = intake;
+        }
+
+        @Override
+        public boolean run(@NonNull TelemetryPacket p) {
+            intake.stopLauncherAuto();
+            return false;
+        }
+    }
+
+    private class SetFlagAndEndAction implements Action {
+        @Override
+        public boolean run(@NonNull TelemetryPacket p) {
+            autoRunning = false;
+            return false;
+        }
+    }
+
+    private class TurretAimAction implements Action {
+        private final MecanumDrive drive;
+        private final Turret turret;
+        private final double goalX;
+        private final double goalY;
+
+        TurretAimAction(MecanumDrive drive, Turret turret, double goalX, double goalY) {
+            this.drive = drive;
+            this.turret = turret;
+            this.goalX = goalX;
+            this.goalY = goalY;
+        }
+
+        @Override
+        public boolean run(@NonNull TelemetryPacket p) {
+            if (!autoRunning) {
+                turret.turretPow(0);
+                return false;
             }
-        }   // end for() loop
+            drive.updatePoseEstimate();
+            Pose2d pose = drive.localizer.getPose();
+            double dx = goalX - pose.position.x;
+            double dy = goalY - pose.position.y;
+            double angleToGoalDeg = Turret.wrapDeg360(Math.toDegrees(Math.atan2(dy, dx)));
+            turret.botHeading = Turret.wrapDeg360(Math.toDegrees(pose.heading.toDouble()));
+            turret.targetAngle = angleToGoalDeg;
+            turret.runTurretGyro();
+            return true;
+        }
+    }
 
-        // Add "key" information to telemetry
-        telemetry.addLine("\nkey:\nXYZ = X (Right), Y (Forward), Z (Up) dist.");
-        telemetry.addLine("PRY = Pitch, Roll & Yaw (XYZ Rotation)");
-        telemetry.addLine("RBE = Range, Bearing & Elevation");
+    private class HoodAndFlywheelUpdateAction implements Action {
+        private final MecanumDrive drive;
+        private final IntakeV2 intake;
+        private final double goalX;
+        private final double goalY;
 
+        HoodAndFlywheelUpdateAction(MecanumDrive drive, IntakeV2 intake, double goalX, double goalY) {
+            this.drive = drive;
+            this.intake = intake;
+            this.goalX = goalX;
+            this.goalY = goalY;
+        }
 
-    }   // end method telemetryAprilTag()
-
-
+        @Override
+        public boolean run(@NonNull TelemetryPacket p) {
+            drive.updatePoseEstimate();
+            Pose2d pose = drive.localizer.getPose();
+            double dist = Math.hypot(goalX - pose.position.x, goalY - pose.position.y);
+            intake.setHoodAndFlywheelFromDistance(dist);
+            intake.runLauncherAuto(isShooting);
+            return autoRunning;
+        }
+    }
 }
-
-
-
-

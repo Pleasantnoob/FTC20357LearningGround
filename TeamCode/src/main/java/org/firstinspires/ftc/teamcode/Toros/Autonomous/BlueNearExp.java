@@ -22,7 +22,6 @@ import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.HardwareMap;
-import com.qualcomm.robotcore.hardware.IMU;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
@@ -30,12 +29,14 @@ import org.firstinspires.ftc.robotcore.external.hardware.camera.BuiltinCameraDir
 import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.teamcode.RR.MecanumDrive;
+import org.firstinspires.ftc.teamcode.RR.PoseBridge;
 import org.firstinspires.ftc.vision.VisionPortal;
 import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
 import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.BooleanSupplier;
 
 @Autonomous(name = "BlueNearGate")
 public class BlueNearExp extends LinearOpMode {
@@ -178,9 +179,33 @@ public class BlueNearExp extends LinearOpMode {
         public Action revMotor() {return  new revLaunch();}
     }
 
-    IMU imu;
-    /** Turret for autonomous. Odometry: 384.5 ticks/rev, gear 2/5. targetAngle in degrees (robot-relative). */
+    /** Wraps an action to return false when keepRunning is false, so parallel can complete. */
+    private class RunUntilFlagAction implements Action {
+        private final Action inner;
+        private final BooleanSupplier keepRunning;
+        RunUntilFlagAction(Action inner, BooleanSupplier keepRunning) {
+            this.inner = inner;
+            this.keepRunning = keepRunning;
+        }
+        @Override
+        public boolean run(@NonNull TelemetryPacket p) {
+            return inner.run(p) && keepRunning.getAsBoolean();
+        }
+    }
+
+    /** Sets autoRunning=false and returns false so parallel can complete. */
+    private class SetFlagAndEndAction implements Action {
+        @Override
+        public boolean run(@NonNull TelemetryPacket p) {
+            autoRunning = false;
+            return false;
+        }
+    }
+
+    /** Turret for autonomous. Heading from drive pose (Pinpoint). */
     public class Turret {
+        private MecanumDrive drive;
+
         public Turret(HardwareMap hardwareMap) {
             turretMotor = hardwareMap.get(DcMotorEx.class, "turret");
             turretMotor.setDirection(DcMotorSimple.Direction.REVERSE);
@@ -188,13 +213,9 @@ public class BlueNearExp extends LinearOpMode {
             turretMotor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
             turretMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
             controller = new PIDController(p2, i2, d2);
-            imu = hardwareMap.get(IMU.class, "imu");
-            IMU.Parameters parameters = new IMU.Parameters(new RevHubOrientationOnRobot(
-                    RevHubOrientationOnRobot.LogoFacingDirection.FORWARD,
-                    RevHubOrientationOnRobot.UsbFacingDirection.UP
-            ));
-            imu.initialize(parameters);
         }
+
+        public void setDrive(MecanumDrive drive) { this.drive = drive; }
 
         public class turretAction implements Action {
             private boolean init = false;
@@ -205,7 +226,8 @@ public class BlueNearExp extends LinearOpMode {
                     controller.setPID(p2, i2, d2);
                     init = true;
                 }
-                double botHeading = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES);
+                if (drive != null) drive.updatePoseEstimate();
+                double botHeading = drive != null ? Math.toDegrees(drive.localizer.getPose().heading.toDouble()) : 0;
                 double currentAngle = (turretMotor.getCurrentPosition() / 384.5) * 360 * gearRatio;
                 double targetPos = (384.5 * targetAngle) / 360 * (5.0 / 2.0);
                 double turretPos = turretMotor.getCurrentPosition();
@@ -247,8 +269,8 @@ public class BlueNearExp extends LinearOpMode {
 
             public boolean run(@NonNull TelemetryPacket telemetryPacket) {
                 if (!init) {
-                    trans.setPower(-0.18);
-                    intake.setPower(-0.67);
+                    intake.setPower(-1);
+                    trans.setPower(-0.15);
                     init = true;
                     timer = new ElapsedTime();
                 }
@@ -257,8 +279,8 @@ public class BlueNearExp extends LinearOpMode {
                     return true;
                 }
                 else{
-                    trans.setPower(0);
                     intake.setPower(0);
+                    trans.setPower(0);
                     return false;
                 }
             }
@@ -296,6 +318,7 @@ public class BlueNearExp extends LinearOpMode {
             public boolean run(@NonNull TelemetryPacket telemetryPacket) {
                 if (!init) {
                     intake.setPower(-1);
+                    trans.setPower(-0.15);
                     init = true;
                     timer = new ElapsedTime();
                 }
@@ -305,6 +328,7 @@ public class BlueNearExp extends LinearOpMode {
                 }
                 else{
                     intake.setPower(0);
+                    trans.setPower(0);
                     return false;
                 }
             }
@@ -387,6 +411,9 @@ public class BlueNearExp extends LinearOpMode {
 
     ArrayList<String> stored = new ArrayList<>();
     ArrayList<String> motif = new ArrayList<>();
+
+    /** Set false when main sequence ends so launcher/turret parallel actions can finish. */
+    private volatile boolean autoRunning = true;
     @Override
     public void runOpMode() {
 
@@ -396,6 +423,7 @@ public class BlueNearExp extends LinearOpMode {
         MecanumDrive drive = new MecanumDrive(hardwareMap, initialPose);
         Launcher launcher = new Launcher(hardwareMap);
         Turret turret = new Turret(hardwareMap);
+        turret.setDrive(drive);
         Intake intake = new Intake(hardwareMap);
         // Wait for the DS start button to be touched.
         telemetry.addData("DS preview on/off", "3 dots, Camera Stream");
@@ -447,18 +475,18 @@ public class BlueNearExp extends LinearOpMode {
 
 
         if (opModeIsActive()) {
+            autoRunning = true;
             Actions.runBlocking(
                     new ParallelAction(
-                            launcher.revMotor(),
-                            turret.turretGo(),
+                            new RunUntilFlagAction(launcher.revMotor(), () -> autoRunning),
+                            new RunUntilFlagAction(turret.turretGo(), () -> autoRunning),
                             new SequentialAction(
                                     turret.changeAngle(44),
                                     tab1, // move to launch position
                                     launcher.fireBallPre(), // +3 (preloaded)
                                     new ParallelAction(//1st spike,
                                             tab2,
-                                            intake.intakeRun(),
-                                            intake.transRun()
+                                            intake.intakeRun()
 
                                     ),
 
@@ -469,8 +497,7 @@ public class BlueNearExp extends LinearOpMode {
                                             new SequentialAction(
                                                     new SleepAction(1.1),
                                                     new ParallelAction(
-                                                            intake.intakeRun(),
-                                                            intake.transRun()
+                                                            intake.intakeRun()
                                                     )
                                             )
                                     ),
@@ -482,20 +509,23 @@ public class BlueNearExp extends LinearOpMode {
                                             new SequentialAction(
                                                     new SleepAction(1.1),
                                                     new ParallelAction(
-                                                            intake.intakeRun(),
-                                                            intake.transRun()
+                                                            intake.intakeRun()
                                                     )
                                             )
 
                                     ),
                                     tab7,
-                                    launcher.fireBall() // + 9
+                                    launcher.fireBall(), // + 9
+                                    new SetFlagAndEndAction()
 
 
 
                             )
                     )
             );
+
+            PoseBridge.save(drive.localizer.getPose());
+            PoseBridge.saveAlliance(true);  // Blue
 
             while (opModeIsActive()) {
                 telemetry.addData("motif",motif.get(1));

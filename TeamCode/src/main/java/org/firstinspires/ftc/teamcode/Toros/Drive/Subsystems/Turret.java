@@ -98,6 +98,12 @@ public class Turret {
 
     /** Robot-relative angle limits (deg). When exceeded, encoder is wrapped via setCurrentPosition to prevent wire tangling. */
     public static double wrapLimitDeg = 180.0;
+    /** Max turret angle relative to robot (deg). Turret cannot go beyond ±robotRelativeLimitDeg to prevent wire tangling. */
+    public static double robotRelativeLimitDeg = 140.0;
+    /** Limit (deg) when in manual turret mode. Slightly larger than normal. */
+    public static double manualModeLimitDeg = 175.0;
+    /** If manual mode stick is reversed, set true (tune on Dashboard). */
+    public static boolean manualModeInvert = true;
 
     /** Nudge sensitivity: degrees added per loop per unit of left_stick_x. Higher = snappier correction (tune on Dashboard). */
     public static double nudgeDegPerUnit = 5.0;
@@ -107,9 +113,18 @@ public class Turret {
     public static double aimOffsetMaxDeg = 170.0;
 
     public Turret(HardwareMap hardwareMap, Gamepad gamepad) {
+        this(hardwareMap, gamepad, false);
+    }
+
+    /**
+     * @param preserveEncoder When true (e.g. coming from auto), do not reset encoder so turret keeps its physical position.
+     */
+    public Turret(HardwareMap hardwareMap, Gamepad gamepad, boolean preserveEncoder) {
         turretMotor = hardwareMap.get(DcMotorEx.class, "turret");
         turretMotor.setDirection(DcMotorSimple.Direction.REVERSE);
-        turretMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        if (!preserveEncoder) {
+            turretMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        }
         turretMotor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
         turretMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
 
@@ -138,11 +153,14 @@ public class Turret {
         double wrappedTicks = outputDeg * TICKS_PER_DEG;
         currentAngle = wrapDeg360(botHeading - rawOutputDeg);  // field angle = robot heading minus turret output
 
-        // Target in robot-relative; add 360*k so turret takes shortest path (nearest equivalent angle)
+        // Target in robot-relative (0=front, ±180=back). Clamp to ±robotRelativeLimitDeg.
         targetOutputDeg = wrapDeg180(botHeading - targetAngle);
+        targetOutputDeg = Math.max(-robotRelativeLimitDeg, Math.min(robotRelativeLimitDeg, targetOutputDeg));
         double revs = (outputDeg - targetOutputDeg) / 360.0;
         double k = Math.round(revs);
-        targetPos = (targetOutputDeg + 360.0 * k) * TICKS_PER_DEG;
+        double targetAngleRobot = targetOutputDeg + 360.0 * k;
+        targetAngleRobot = Math.max(-robotRelativeLimitDeg, Math.min(robotRelativeLimitDeg, targetAngleRobot));
+        targetPos = targetAngleRobot * TICKS_PER_DEG;
 
         SimpleMotorFeedforward feedforward = new SimpleMotorFeedforward(kS, kV, kA);
         controller.setPID(p1, i1, d1);
@@ -159,17 +177,12 @@ public class Turret {
         if (gamepad2.aWasPressed()) {
             targetAngle = 0;
         }
-        // X: reset encoder and set target to current field angle so turret holds position
-        if (gamepad2.xWasPressed()) {
-            turretMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-            turretMotor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-            targetAngle = currentAngle;
-        }
+        // X / Start: handled by MainDrive (resyncEncoder) for centralized trigger + rumble
     }
 
     /**
-     * Runs turret control using a fixed heading value k (e.g. when lock-on is active and we freeze robot heading).
-     * Call this every teleop loop when in lock-on mode.
+     * Runs turret control using a fixed heading value k (manual mode). Robot-relative limit = manualModeLimitDeg (170°).
+     * Call this every teleop loop when in manual turret mode.
      */
     public void runTurretNoGyro(double k) {
         double ticks = turretMotor.getCurrentPosition();
@@ -181,29 +194,32 @@ public class Turret {
         double wrappedTicks = outputDeg * TICKS_PER_DEG;
         currentAngle = wrapDeg360(rawOutputDeg + k);
 
+        double limit = manualModeLimitDeg;
         targetOutputDeg = wrapDeg180(targetAngle - k);
+        targetOutputDeg = Math.max(-limit, Math.min(limit, targetOutputDeg));
         double revs = (outputDeg - targetOutputDeg) / 360.0;
         double kRev = Math.round(revs);
-        targetPos = (targetOutputDeg + 360.0 * kRev) * TICKS_PER_DEG;
+        double targetAngleRobot = targetOutputDeg + 360.0 * kRev;
+        targetAngleRobot = Math.max(-limit, Math.min(limit, targetAngleRobot));
+        targetPos = targetAngleRobot * TICKS_PER_DEG;
 
         SimpleMotorFeedforward feedforward = new SimpleMotorFeedforward(kS, kV, kA);
         controller.setPID(p1, i1, d1);
         double pid2 = controller.calculate(wrappedTicks, targetPos);
         double ff = feedforward.calculate(0);
         power = pid2 + ff;
-        turretMotor.setPower(turretDriveEnabled ? power : 0);
+        double pwr = manualModeInvert ? -power : power;
+        turretMotor.setPower(turretDriveEnabled ? pwr : 0);
 
-        if (Math.abs(gamepad2.left_stick_x) > 0.1) {
-            aimOffsetDeg -= gamepad2.left_stick_x * nudgeDegPerUnit;
-            aimOffsetDeg = Math.max(-aimOffsetMaxDeg, Math.min(aimOffsetMaxDeg, aimOffsetDeg));
-        }
-        if (gamepad2.aWasPressed()) {
-            targetAngle = 0;
-        }
-        if (gamepad2.xWasPressed()) {
-            turretMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-            turretMotor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-        }
+        // Manual mode: stick and A handled in MainDrive. X / Start resync handled by MainDrive.
+    }
+
+    /** Re-sync encoder to physical position (fixes drift after gear skip). Center turret first, then press X or Start. */
+    public void resyncEncoder() {
+        turretMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        turretMotor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        controller.reset();  // clear integral/derivative state for clean response
+        targetAngle = botHeading;  // default: hold 0° robot-relative (MainDrive overrides for aim mode)
     }
 
     /** Sets the target turret angle in field frame (degrees). */

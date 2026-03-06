@@ -19,6 +19,7 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.Servo;
 
 import org.firstinspires.ftc.teamcode.RR.MecanumDrive;
+import org.firstinspires.ftc.teamcode.RR.PoseBridge;
 
 @Autonomous(name = "Autonomous Right")
 @Disabled
@@ -300,5 +301,7 @@ public class AutoV2 extends LinearOpMode {
                         .stopAndAdd(arm.joint1up())
                         .build()
         );
+        PoseBridge.save(drive.localizer.getPose());
+        PoseBridge.saveAlliance(false);  // Red (Autonomous Right)
     }
 }

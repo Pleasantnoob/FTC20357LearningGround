@@ -5,6 +5,7 @@ import androidx.annotation.NonNull;
 import com.acmerobotics.dashboard.telemetry.TelemetryPacket;
 import com.acmerobotics.roadrunner.Action;
 import com.acmerobotics.roadrunner.InstantAction;
+import com.acmerobotics.roadrunner.ParallelAction;
 import com.acmerobotics.roadrunner.Pose2d;
 import com.acmerobotics.roadrunner.SequentialAction;
 import com.acmerobotics.roadrunner.Vector2d;
@@ -17,7 +18,6 @@ import com.qualcomm.robotcore.hardware.ColorSensor;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.HardwareMap;
-import com.qualcomm.robotcore.hardware.IMU;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
@@ -25,6 +25,7 @@ import org.firstinspires.ftc.robotcore.external.hardware.camera.BuiltinCameraDir
 import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.teamcode.RR.MecanumDrive;
+import org.firstinspires.ftc.teamcode.RR.PoseBridge;
 import org.firstinspires.ftc.vision.VisionPortal;
 import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
 import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
@@ -101,27 +102,60 @@ public class Auto2025RedFarMovesRight extends LinearOpMode {
         public Action fireBall() {
             return new launcherAction();
         }
+
+        /** Revs flywheel continuously (returns true forever). Run in parallel so launcher is up to speed before firing. */
+        public class revLaunch implements Action {
+            boolean init = false;
+            @Override
+            public boolean run(@NonNull TelemetryPacket telemetryPacket) {
+                if (!init) {
+                    controller.setPID(p1, i1, d1);
+                    init = true;
+                }
+                double launchVel = launch.getVelocity();
+                double pid = controller.calculate(launchVel, targetVel);
+                launch.setPower(pid);
+                return true;
+            }
+        }
+        public Action revMotor() { return new revLaunch(); }
     }
 
+    /** Wraps an action to return false when keepRunning is false, so parallel can complete. */
+    private class RunUntilFlagAction implements Action {
+        private final Action inner;
+        private final java.util.function.BooleanSupplier keepRunning;
+        RunUntilFlagAction(Action inner, java.util.function.BooleanSupplier keepRunning) {
+            this.inner = inner;
+            this.keepRunning = keepRunning;
+        }
+        @Override
+        public boolean run(@NonNull TelemetryPacket p) {
+            return inner.run(p) && keepRunning.getAsBoolean();
+        }
+    }
 
-    IMU imu;
-    /**
-     * Turret for this auto. Uses 180 in formulas instead of 360 (half-scale angle).
-     * If turret position seems wrong vs other autos, verify whether 180 or 360 is correct for your gearbox.
-     */
+    /** Sets autoRunning=false and returns false so parallel can complete. */
+    private class SetFlagAndEndAction implements Action {
+        @Override
+        public boolean run(@NonNull TelemetryPacket p) {
+            autoRunning = false;
+            return false;
+        }
+    }
+
+    /** Turret for this auto. Heading from drive pose (Pinpoint). */
     public class Turret {
+        private MecanumDrive drive;
+
         public Turret(HardwareMap hardwareMap) {
             turretMotor = hardwareMap.get(DcMotorEx.class, "turret");
             turretMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
             turretMotor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
             controller = new PIDController(p2, i2, d2);
-            imu = hardwareMap.get(IMU.class, "imu");
-            IMU.Parameters parameters = new IMU.Parameters(new RevHubOrientationOnRobot(
-                    RevHubOrientationOnRobot.LogoFacingDirection.UP,
-                    RevHubOrientationOnRobot.UsbFacingDirection.LEFT
-            ));
-            imu.initialize(parameters);
         }
+
+        public void setDrive(MecanumDrive drive) { this.drive = drive; }
 
         public class turretAction implements Action {
             private boolean init = false;
@@ -132,7 +166,8 @@ public class Auto2025RedFarMovesRight extends LinearOpMode {
                     controller.setPID(p2, i2, d2);
                     init = true;
                 }
-                double botHeading = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES);
+                if (drive != null) drive.updatePoseEstimate();
+                double botHeading = drive != null ? Math.toDegrees(drive.localizer.getPose().heading.toDouble()) : 0;
                 double Currentangle = (turretMotor.getCurrentPosition() / 384.5) * 180 * (2.0 / 5.0);
                 double ticks = (384.5 * (targetAngle + botHeading)) / 180 * (5.0 / 2.0);
                 double motorPosition = turretMotor.getCurrentPosition();
@@ -163,8 +198,8 @@ public class Auto2025RedFarMovesRight extends LinearOpMode {
             @Override
             public boolean run(@NonNull TelemetryPacket telemetryPacket) {
                 if (!init) {
-                    trans.setPower(-0.18);
                     intake.setPower(-1);
+                    trans.setPower(-0.15);
                     init = true;
                     timer = new ElapsedTime();
                 }
@@ -173,8 +208,8 @@ public class Auto2025RedFarMovesRight extends LinearOpMode {
                     return true;
                 }
                 else{
-                    trans.setPower(0);
                     intake.setPower(0);
+                    trans.setPower(0);
                     return false;
                 }
             }
@@ -222,6 +257,10 @@ public class Auto2025RedFarMovesRight extends LinearOpMode {
 
     ArrayList<String> stored = new ArrayList<>();
     ArrayList<String> motif = new ArrayList<>();
+
+    /** Set false when main sequence ends so launcher parallel can finish. */
+    private volatile boolean autoRunning = true;
+
     @Override
     public void runOpMode() {
 
@@ -231,7 +270,9 @@ public class Auto2025RedFarMovesRight extends LinearOpMode {
         MecanumDrive drive = new MecanumDrive(hardwareMap, initialPose);
         Launcher launcher = new Launcher(hardwareMap);
         Turret turret = new Turret(hardwareMap);
+        turret.setDrive(drive);
         Intake intake = new Intake(hardwareMap);
+        Servo led = hardwareMap.get(Servo.class, "LED");
         // Wait for the DS start button to be touched.
         telemetry.addData("DS preview on/off", "3 dots, Camera Stream");
         telemetry.addData(">", "Touch START to start OpMode");
@@ -264,11 +305,17 @@ public class Auto2025RedFarMovesRight extends LinearOpMode {
                 .strafeToLinearHeading(new Vector2d(35.25,12),Math.toRadians(270))
                 .strafeTo(new Vector2d(35.25,53))
                 .build();
+
         if (opModeIsActive()) {
+            autoRunning = true;
             Actions.runBlocking(
-                    new SequentialAction(
-                            launcher.fireBall(),
-                            tab1
+                    new ParallelAction(
+                            new RunUntilFlagAction(launcher.revMotor(), () -> autoRunning),
+                            new LedFadeAction(led, () -> autoRunning),
+                            new SequentialAction(
+                                    launcher.fireBall(),
+                                    tab1,
+                                    new SetFlagAndEndAction()
 //                            new ParallelAction(
 //                                    tab2,
 //                                    intake.takeBall()
@@ -284,8 +331,13 @@ public class Auto2025RedFarMovesRight extends LinearOpMode {
 //                                    tab6,
 //                                    intake.takeBall()
 //                            )
-                    )
+                                    )
+                            )
             );
+
+            PoseBridge.save(drive.localizer.getPose());
+            PoseBridge.saveAlliance(false);  // Red
+
             while (opModeIsActive()) {
 //                telemetry.addData("motif",motif.get(1));
                 //telemetryAprilTag();

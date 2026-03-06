@@ -25,6 +25,7 @@ import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
 import org.firstinspires.ftc.teamcode.RR.MecanumDrive;
+import org.firstinspires.ftc.teamcode.RR.PoseBridge;
 @Config
 @Autonomous(name = "AUTOV3")
 @Disabled
@@ -229,7 +230,8 @@ public class AutoV3 extends LinearOpMode {
                 )
         );
 
-
+        PoseBridge.save(drive.localizer.getPose());
+        PoseBridge.saveAlliance(true);  // Blue
 
         telemetry.update();
     }

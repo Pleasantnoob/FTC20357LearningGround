@@ -132,6 +132,7 @@ public class Auto12Ball extends LinearOpMode {
         Actions.runBlocking(main);
 
         PoseBridge.save(drive.localizer.getPose());
+        PoseBridge.saveAlliance(true);  // Blue
         intake.stopLauncherAuto();
         intake.runIntakeAuto(false);
     }
