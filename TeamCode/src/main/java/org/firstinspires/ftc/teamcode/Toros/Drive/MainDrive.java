@@ -69,10 +69,10 @@ public class MainDrive extends LinearOpMode {
 
     /** Red alliance: same as blue but +Y. Start (-50, 50); goal -X left, +Y; heading 128°. */
     public static double redStartX = -50.0, redStartY = 50.0, redStartHeadingDeg = 128.0;
-    public static double redGoalX = 70.0, redGoalY = 70.0;
+    public static double redGoalX = -70.0, redGoalY = 70.0;
     /** Blue alliance: mirror of red with -Y and -heading. Start (-50, -50); goal -X -Y; heading -128°. */
     public static double blueStartX = -50.0, blueStartY = -50.0, blueStartHeadingDeg = -128.0;
-    public static double blueGoalX = 70.0, blueGoalY = -70.0;
+    public static double blueGoalX = -70.0, blueGoalY = -70.0;
 
     /** If turret mechanical 0° is not aligned with robot +X, add offset here (e.g. 90 or -90). Tune on Dashboard. */
     public static double turretAngleOffsetDeg = 0.0;
