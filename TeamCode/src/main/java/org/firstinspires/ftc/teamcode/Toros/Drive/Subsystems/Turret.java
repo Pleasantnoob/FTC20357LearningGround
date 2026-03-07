@@ -32,8 +32,8 @@ public class Turret {
     public static boolean turretDriveEnabled = true;
 
     // ========== Tuning constants (tune via FTC Dashboard or here). Do not change odometry constants below without verifying on robot. ==========
-    public static double p1 = 0.00625, i1 = 0.00, d1 = 0.00055;
-    public static double kS = 0, kV = 0.000125, kA = 0;
+    public static double p1 = 0.0037, i1 = 0.0001, d1 = 0.00058;
+    public static double kS = 0, kV = 0, kA = 0;
 
     /** Encoder ticks per one full motor revolution. Used for encoder ↔ angle conversion. */
     public static final double TICKS_PER_MOTOR_REV = 384.5;

@@ -68,6 +68,52 @@ public final class ShootingZones {
         return Math.signum(s3) == Math.signum(p3) || p3 == 0;
     }
 
+    /** Radius (inches) of circle around robot for zone overlap check. If circle crosses zone boundary, ready to shoot. */
+    public static double robotZoneCircleRadius = 8.0;
+
+    /** Distance from point (px,py) to line segment (ax,ay)-(bx,by). */
+    private static double pointToSegmentDist(double px, double py, double ax, double ay, double bx, double by) {
+        double dx = bx - ax, dy = by - ay;
+        double lenSq = dx * dx + dy * dy;
+        if (lenSq == 0) return Math.hypot(px - ax, py - ay);
+        double t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
+        double qx = ax + t * dx, qy = ay + t * dy;
+        return Math.hypot(px - qx, py - qy);
+    }
+
+    /** Min distance from point (px,py) to triangle (x1,y1)-(x2,y2)-(x3,y3). Returns 0 if point inside. */
+    private static double pointToTriangleDist(double px, double py, double x1, double y1, double x2, double y2, double x3, double y3) {
+        if (isPointInTriangle(px, py, x1, y1, x2, y2, x3, y3)) return 0;
+        double d1 = pointToSegmentDist(px, py, x1, y1, x2, y2);
+        double d2 = pointToSegmentDist(px, py, x2, y2, x3, y3);
+        double d3 = pointToSegmentDist(px, py, x3, y3, x1, y1);
+        return Math.min(d1, Math.min(d2, d3));
+    }
+
+    private static boolean isPointInTriangle(double px, double py, double x1, double y1, double x2, double y2, double x3, double y3) {
+        double s1 = crossSign(x1, y1, x2, y2, x3, y3);
+        double p1 = crossSign(x1, y1, x2, y2, px, py);
+        if (Math.signum(s1) != Math.signum(p1) && p1 != 0) return false;
+        double s2 = crossSign(x2, y2, x3, y3, x1, y1);
+        double p2 = crossSign(x2, y2, x3, y3, px, py);
+        if (Math.signum(s2) != Math.signum(p2) && p2 != 0) return false;
+        double s3 = crossSign(x3, y3, x1, y1, x2, y2);
+        double p3 = crossSign(x3, y3, x1, y1, px, py);
+        return Math.signum(s3) == Math.signum(p3) || p3 == 0;
+    }
+
+    /** True if circle of given radius around (robotX, robotY) intersects the close launch triangle. */
+    public static boolean circleIntersectsCloseLaunchTriangle(double robotX, double robotY, double radius) {
+        double d = pointToTriangleDist(robotX, robotY, closeTriX1, closeTriY1, closeTriX2, closeTriY2, closeTriX3, closeTriY3);
+        return d <= radius;
+    }
+
+    /** True if circle of given radius around (robotX, robotY) intersects the far zone triangle. */
+    public static boolean circleIntersectsFarZoneTriangle(double robotX, double robotY, double radius) {
+        double d = pointToTriangleDist(robotX, robotY, farTriX1, farTriY1, farTriX2, farTriY2, farTriX3, farTriY3);
+        return d <= radius;
+    }
+
     /** True if (x,y) is inside the field rectangle [-FIELD_HALF_SIZE, FIELD_HALF_SIZE]. */
     public static boolean isInsideField(double x, double y) {
         return Math.abs(x) <= FIELD_HALF_SIZE && Math.abs(y) <= FIELD_HALF_SIZE;

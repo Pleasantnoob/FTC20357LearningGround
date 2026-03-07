@@ -65,14 +65,14 @@ public class MainDrive extends LinearOpMode {
     public static double startY = 47.0;
     public static double startHeadingDeg = 130.0;
     public static double goalX = -70.0;
-    public static double goalY = 64.0;
+    public static double goalY = 70.0;
 
     /** Red alliance: same as blue but +Y. Start (-50, 50); goal -X left, +Y; heading 128°. */
     public static double redStartX = -50.0, redStartY = 50.0, redStartHeadingDeg = 128.0;
-    public static double redGoalX = -70.0, redGoalY = 64.0;
+    public static double redGoalX = 70.0, redGoalY = 70.0;
     /** Blue alliance: mirror of red with -Y and -heading. Start (-50, -50); goal -X -Y; heading -128°. */
     public static double blueStartX = -50.0, blueStartY = -50.0, blueStartHeadingDeg = -128.0;
-    public static double blueGoalX = -70.0, blueGoalY = -64.0;
+    public static double blueGoalX = 70.0, blueGoalY = -70.0;
 
     /** If turret mechanical 0° is not aligned with robot +X, add offset here (e.g. 90 or -90). Tune on Dashboard. */
     public static double turretAngleOffsetDeg = 0.0;
@@ -301,15 +301,16 @@ public class MainDrive extends LinearOpMode {
             // Alliance can be changed during run: goal/start update (pose not reset)
             if (gamepad1.dpad_left) { mode = true; applyAllianceMode(); }
             else if (gamepad1.dpad_right) { mode = false; applyAllianceMode(); }
-            // --- 3. Close + far zone triangles. Rumble + LED when in either zone with 2+ artifacts. ---
+            // --- 3. Close + far zone triangles. 8" circle around robot: if it crosses zone boundary, ready to shoot. ---
             int artifactCount = countArtifacts();
-            boolean inCloseTriangle = ShootingZones.isInCloseLaunchTriangle(pose.position.x, pose.position.y);
-            boolean inFarTriangle = ShootingZones.isInFarZoneTriangle(pose.position.x, pose.position.y);
-            boolean readyToShoot = (inCloseTriangle || inFarTriangle) && artifactCount >= 2;
+            double zoneRadius = ShootingZones.robotZoneCircleRadius;
+            boolean circleInClose = ShootingZones.circleIntersectsCloseLaunchTriangle(pose.position.x, pose.position.y, zoneRadius);
+            boolean circleInFar = ShootingZones.circleIntersectsFarZoneTriangle(pose.position.x, pose.position.y, zoneRadius);
+            boolean readyToShoot = (circleInClose || circleInFar) && artifactCount >= 2;
             if (readyToShoot && !prevReadyToShoot) gamepad2.rumble(closeZoneRumbleMs);  // edge-triggered so we don't rumble every loop
             prevReadyToShoot = readyToShoot;
             // LED: use at least 2 balls (c*.blue() > 150). If 2+ balls → ready/normal; else red.
-            boolean inZone = inCloseTriangle || inFarTriangle;
+            boolean inZone = circleInClose || circleInFar;
             double ledPos;
             if (intake.hasAtLeastTwoBalls()) {
                 ledPos = inZone ? LedConfig.posReady : LedConfig.posNormal;
@@ -397,7 +398,6 @@ public class MainDrive extends LinearOpMode {
                     ShootingZones.farTriX1, ShootingZones.farTriY1,
                     ShootingZones.farTriX2, ShootingZones.farTriY2,
                     ShootingZones.farTriX3, ShootingZones.farTriY3, "#4FC3F7");
-            Drawing.drawFarZoneCircle(packet.fieldOverlay(), goalX, goalY, ShootingZones.farMaxIn, "#4FC3F7");
             ShootingZones.Zone shootingZone = ShootingZones.getShootingZone(pose.position.x, pose.position.y, goalX, goalY);
             boolean inField = ShootingZones.isInsideField(pose.position.x, pose.position.y);
             packet.put("shooting_zone", shootingZone.name().toLowerCase());
