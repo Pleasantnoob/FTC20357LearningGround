@@ -1,8 +1,8 @@
 package org.firstinspires.ftc.teamcode.RR;
 
 import com.acmerobotics.dashboard.canvas.Canvas;
-import com.acmerobotics.roadrunner.Pose2d;
-import com.acmerobotics.roadrunner.Vector2d;
+import org.firstinspires.ftc.teamcode.util.Pose2d;
+import org.firstinspires.ftc.teamcode.util.Vector2d;
 
 import java.util.List;
 
@@ -24,7 +24,7 @@ public final class Drawing {
         c.setStrokeWidth((int) strokeWidth);
         c.setStroke(strokeColor);
         c.strokeCircle(t.position.x, t.position.y, ROBOT_RADIUS);
-        Vector2d halfv = t.heading.vec().times(0.5 * ROBOT_RADIUS);
+        Vector2d halfv = t.headingVec().times(0.5 * ROBOT_RADIUS);
         Vector2d p1 = t.position.plus(halfv);
         Vector2d p2 = p1.plus(halfv);
         c.strokeLine(p1.x, p1.y, p2.x, p2.y);
@@ -39,7 +39,7 @@ public final class Drawing {
         c.fillCircle(goalX, goalY, 3);
     }
 
-    /** Draw virtual goal (velocity-comp aim point) as a distinct marker. Use when comp is on so it’s visible vs real goal. */
+    /** Draw virtual goal (velocity-comp aim point) as a distinct marker. Use when comp is on so it's visible vs real goal. */
     public static void drawVirtualGoal(Canvas c, double x, double y, String color) {
         c.setStrokeWidth(2);
         c.setStroke(color);
@@ -56,7 +56,7 @@ public final class Drawing {
         c.strokeLine(robot.position.x, robot.position.y, goalX, goalY);
     }
 
-    /** Draw camera relocalization pose on field (inches): distinct filled circle so it’s visible. */
+    /** Draw camera relocalization pose on field (inches): distinct filled circle so it's visible. */
     public static void drawCameraPose(Canvas c, Pose2d cameraPose, String color) {
         if (cameraPose == null) return;
         final double RADIUS = 12;

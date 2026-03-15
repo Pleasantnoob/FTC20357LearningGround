@@ -2,7 +2,21 @@ repositories {
     mavenCentral()
     google() // Needed for androidx
     maven { url = 'https://maven.brott.dev/' }
-    maven { url = 'https://jitpack.io'}
+    maven { url = 'https://jitpack.io' }
+    maven { url = 'https://mymaven.bylazar.com/releases' }
+}
+
+// Avoid Material 1.12+ macro; avoid lifecycle 2.6+ and core-ktx 1.13+ (minCompileSdk 33/34)
+configurations.all {
+    resolutionStrategy {
+        force 'com.google.android.material:material:1.6.1'
+        force 'androidx.lifecycle:lifecycle-livedata:2.5.1'
+        force 'androidx.lifecycle:lifecycle-viewmodel:2.5.1'
+        force 'androidx.lifecycle:lifecycle-common:2.5.1'
+        force 'androidx.lifecycle:lifecycle-runtime:2.5.1'
+        force 'androidx.core:core-ktx:1.8.0'
+        force 'androidx.core:core:1.8.0'
+    }
 }
 
 dependencies {
@@ -17,6 +31,9 @@ dependencies {
     implementation 'org.firstinspires.ftc:Vision:11.1.0'
     implementation 'androidx.appcompat:appcompat:1.2.0'
     implementation 'com.acmerobotics.dashboard:dashboard:0.5.1'
+    implementation 'com.pedropathing:ftc:2.0.6'
+    implementation 'com.pedropathing:telemetry:1.0.0'
+    implementation 'com.bylazar:fullpanels:1.0.9'
 
 }
 

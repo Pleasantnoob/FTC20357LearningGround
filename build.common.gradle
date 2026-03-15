@@ -21,7 +21,7 @@ apply plugin: 'com.android.application'
 
 android {
 
-    compileSdkVersion 30
+    compileSdkVersion 31  // 31 for lifecycle deps; core-ktx forced to 1.9.0 in build.dependencies.gradle
 
     signingConfigs {
         release {

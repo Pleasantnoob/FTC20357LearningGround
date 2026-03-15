@@ -351,7 +351,7 @@ public class Auto2025RedNearOdometryAim extends LinearOpMode {
         trans.setPower(0);
         intake.setPower(0);
 
-        PoseBridge.save(drive.localizer.getPose());
+        PoseBridge.save(org.firstinspires.ftc.teamcode.util.Pose2d.fromRR(drive.localizer.getPose()));
         PoseBridge.saveAlliance(false);  // Red
 
         while (opModeIsActive()) {

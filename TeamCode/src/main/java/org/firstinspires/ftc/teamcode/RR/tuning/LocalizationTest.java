@@ -41,7 +41,7 @@ public class LocalizationTest extends LinearOpMode {
 
                 TelemetryPacket packet = new TelemetryPacket();
                 packet.fieldOverlay().setStroke("#3F51B5");
-                Drawing.drawRobot(packet.fieldOverlay(), pose);
+                Drawing.drawRobot(packet.fieldOverlay(), org.firstinspires.ftc.teamcode.util.Pose2d.fromRR(pose));
                 FtcDashboard.getInstance().sendTelemetryPacket(packet);
             }
         } else if (TuningOpModes.DRIVE_CLASS.equals(TankDrive.class)) {
@@ -68,7 +68,7 @@ public class LocalizationTest extends LinearOpMode {
 
                 TelemetryPacket packet = new TelemetryPacket();
                 packet.fieldOverlay().setStroke("#3F51B5");
-                Drawing.drawRobot(packet.fieldOverlay(), pose);
+                Drawing.drawRobot(packet.fieldOverlay(), org.firstinspires.ftc.teamcode.util.Pose2d.fromRR(pose));
                 FtcDashboard.getInstance().sendTelemetryPacket(packet);
             }
         } else {

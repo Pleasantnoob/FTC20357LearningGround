@@ -335,7 +335,7 @@ public class Auto2025RedFarMovesRight extends LinearOpMode {
                             )
             );
 
-            PoseBridge.save(drive.localizer.getPose());
+            PoseBridge.save(org.firstinspires.ftc.teamcode.util.Pose2d.fromRR(drive.localizer.getPose()));
             PoseBridge.saveAlliance(false);  // Red
 
             while (opModeIsActive()) {

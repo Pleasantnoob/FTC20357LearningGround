@@ -1,15 +1,15 @@
 package org.firstinspires.ftc.teamcode.RR;
 
-import com.acmerobotics.roadrunner.Pose2d;
+import org.firstinspires.ftc.teamcode.util.Pose2d;
 
 /**
  * Bridges field position, heading, and alliance from Autonomous to Teleop.
  * Static state persists while the app is running, so when you run Auto then Teleop
  * in the same session, Teleop can start from the pose Auto ended at and the same alliance.
  *
- * <p>Auto: call {@link #save(Pose2d)} with the current localizer pose (e.g. at end of autonomous
+ * <p>Auto: call {@link #save(Pose2d)} with the current pose (e.g. at end of autonomous
  * or each loop). Call {@link #saveAlliance(boolean)} with true for Blue, false for Red.
- * Teleop: in init, use {@link #getPose()} and pass to your localizer's setPose
+ * Teleop: in init, use {@link #getPose()} and pass to your drive's setPose
  * if {@link #hasPose()} is true. Use {@link #getAlliance()} if {@link #hasAlliance()} to set
  * the alliance (true = Blue, false = Red).
  */
@@ -27,7 +27,7 @@ public final class PoseBridge {
     public static void save(Pose2d pose) {
         x = pose.position.x;
         y = pose.position.y;
-        headingRad = pose.heading.toDouble();
+        headingRad = pose.heading;
         hasPose = true;
     }
 

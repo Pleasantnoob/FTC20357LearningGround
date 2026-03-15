@@ -1,7 +1,7 @@
 package org.firstinspires.ftc.teamcode.Toros.Drive;
 
 import com.acmerobotics.dashboard.config.Config;
-import com.acmerobotics.roadrunner.Vector2d;
+import org.firstinspires.ftc.teamcode.util.Vector2d;
 
 /**
  * Shooting zone boundaries and field bounds. Uses robot pose (odometry) to determine

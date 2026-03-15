@@ -301,7 +301,7 @@ public class AutoV2 extends LinearOpMode {
                         .stopAndAdd(arm.joint1up())
                         .build()
         );
-        PoseBridge.save(drive.localizer.getPose());
+        PoseBridge.save(org.firstinspires.ftc.teamcode.util.Pose2d.fromRR(drive.localizer.getPose()));
         PoseBridge.saveAlliance(false);  // Red (Autonomous Right)
     }
 }

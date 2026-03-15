@@ -6,9 +6,8 @@ import com.acmerobotics.dashboard.FtcDashboard;
 import com.acmerobotics.dashboard.config.Config;
 import com.acmerobotics.dashboard.telemetry.MultipleTelemetry;
 import com.acmerobotics.dashboard.telemetry.TelemetryPacket;
-import com.acmerobotics.roadrunner.Pose2d;
-import com.acmerobotics.roadrunner.PoseVelocity2d;
-import com.acmerobotics.roadrunner.Vector2d;
+import org.firstinspires.ftc.teamcode.util.Pose2d;
+import org.firstinspires.ftc.teamcode.util.Vector2d;
 import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
@@ -18,8 +17,6 @@ import com.qualcomm.robotcore.hardware.Servo;
 import org.firstinspires.ftc.robotcore.external.hardware.camera.BuiltinCameraDirection;
 import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
 import org.firstinspires.ftc.teamcode.RR.Drawing;
-import org.firstinspires.ftc.teamcode.RR.MecanumDrive;
-import org.firstinspires.ftc.teamcode.RR.PinpointLocalizer;
 import org.firstinspires.ftc.teamcode.RR.PoseBridge;
 import org.firstinspires.ftc.teamcode.Toros.Drive.CameraRelocalization;
 import org.firstinspires.ftc.teamcode.Toros.Drive.ShootingZones;
@@ -40,25 +37,27 @@ import java.util.LinkedList;
 import java.util.List;
 
 /**
- * Main teleop: drive, odometry, turret, intake, FTC Dashboard.
+ * Main teleop: drive, odometry, turret, intake, and optional auto-park. Supports FTC Dashboard or Panels.
  *
- * Pose (robot position + heading): from PinpointLocalizer = GoBilda Pinpoint odometry pods + IMU (same as RR).
- * Start position and goal: origin at center of mat. Standing on red side: X to the right is negative (-X), Y forward is negative (-Y).
- * So -X = right, +X = left; -Y = forward (toward center/blue), +Y = back (toward red wall).
- * If the robot appears in the wrong place on Dashboard, tune PinpointLocalizer.PARAMS (parYTicks, perpXTicks) and encoder directions.
+ * <p><b>Coordinates</b> — Origin at center of mat. Red side: -X = right, -Y = forward (toward center).
+ * Pose from Pedro Pathing (Pinpoint + IMU). See pedroPathing.Constants.
  *
- * Turret: When !lockedOn we aim at goal: angleToGoal uses pose + goal. Angles in [0, 360) (RR convention).
- * Dpad Up = 0°, Dpad Down = 180°; else angleToGoal. Lock-on (Y) = vision; B = exit. Left stick X = nudge.
+ * <p><b>Drive</b> — Left stick = translate, right stick X = turn. Position hold when sticks idle (config).
+ * <b>Auto-park</b> — G1 left bumper: toggle path-to-goal (parking spot). While on, robot paths to goal;
+ * G1 right stick nudges the target at small scale ({@link #parkNudgeScaleIn} in). Press left bumper again to cancel.
  *
- * Alliance: Dpad Left = Blue, Dpad Right = Red; start and goal set from red* / blue*.
+ * <p><b>Turret</b> — When !lockedOn: aim at goal (dpad Up/Down = 0°/180°). Lock-on: G2 Y = vision, B = exit. G2 left stick X = nudge.
  *
- * Airsort: Operator Back toggles on/off. When on, motif from AprilTags 21/22/23 + ball color from c1,c2,c3
- * → fast shot (correct color) or slow shot (wrong color). Shot index auto-advances when ball leaves launcher.
+ * <p><b>Alliance</b> — G1 dpad Left = Blue, Right = Red (start/goal from blue* / red*).
+ *
+ * <p><b>Airsort</b> — G2 Back toggles. Motif from AprilTags 21/22/23 + ball color → fast/slow shot.
  */
 @TeleOp(name = "MainDrive")
 @Config
 public class MainDrive extends LinearOpMode {
     private static final boolean USE_WEBCAM = true;
+    private static final int POSE_HISTORY_MAX = 200;
+    private static final int LOOP_SLEEP_MS = 20;
 
     /** Start pose and goal (inches, degrees). Set from alliance mode (blue/red). From red side: -X = right, -Y = forward (see class doc). */
     public static double startX = -55.0;
@@ -89,6 +88,9 @@ public class MainDrive extends LinearOpMode {
     /** When true, use AprilTag to estimate robot pose for display/aim; when false, use odometry only. */
     public static boolean useCameraRelocalization = false;
 
+    /** When true, send telemetry to Panels (https://panels.bylazar.com) instead of FTC Dashboard. Requires FullPanels; open Panels in browser and connect to robot. */
+    public static boolean usePanelsDashboard = false;
+
     /** Min R+G+B for a color sensor to count as "artifact present" (color-agnostic). */
     public static int artifactThreshold = 80;
     /** Gamepad2 rumble duration (ms) when entering close zone with 2+ artifacts. */
@@ -106,6 +108,12 @@ public class MainDrive extends LinearOpMode {
     public static boolean positionHoldEnabled = true;
     public static double positionHoldDeadband = 0.08;
     public static double driveScale = 0.75;
+
+    // ─── Auto-park (G1 left bumper): path to goal; right stick nudges target at small scale ───
+    /** Max nudge from goal in inches (right stick ±1 → ±parkNudgeScaleIn). */
+    public static double parkNudgeScaleIn = 6.0;
+    /** Right-stick deadband for nudge so tiny movements don't drift. */
+    public static double parkNudgeDeadband = 0.15;
 
     public AprilTagProcessor aprilTag;
     public String[] motif = new String[3];
@@ -142,13 +150,22 @@ public class MainDrive extends LinearOpMode {
     /** Camera range to goal tag in inches (ftcPose.range is meters). Set when tag 20 or 24 seen; NaN otherwise. Same IDs as lock-on. */
     public static double cameraDistanceInches = Double.NaN;
     private static final double M_TO_IN = 39.37007874;
-    MecanumDrive mecanumDrive;
+    PedroDrive pedroDrive;
 
     /** Camera-derived pose for Dashboard only; null when no tag 20/24 seen. */
     private Pose2d cameraPose = null;
 
     /** Pose history for Dashboard path (localization viz); same as used in tuning opmodes. */
     private final LinkedList<Pose2d> poseHistory = new LinkedList<>();
+
+    /** Panels telemetry (when usePanelsDashboard); null when using FTC Dashboard. Set via reflection (Panels.getTelemetry()). */
+    private Object panelsTelemetry = null;
+
+    /** Auto-park: G1 left bumper toggles path-to-goal; right stick nudges target (small scale). */
+    private boolean autoParkActive = false;
+    private boolean prevLeftBumper = false;
+    private double parkNudgeX = 0;
+    private double parkNudgeY = 0;
 
     public static double getDistanceX(){
         return distanceX;
@@ -159,7 +176,12 @@ public class MainDrive extends LinearOpMode {
     }
     @Override
     public void runOpMode() throws InterruptedException {
-        telemetry = new MultipleTelemetry(telemetry, FtcDashboard.getInstance().getTelemetry());
+        if (usePanelsDashboard) {
+            panelsTelemetry = getPanelsTelemetry();
+            // Telemetry goes to Driver Station; Panels receives via panelsTelemetry.update(telemetry) in loop
+        } else {
+            telemetry = new MultipleTelemetry(telemetry, FtcDashboard.getInstance().getTelemetry());
+        }
 
 
         // Bulk caching reduces USB traffic to expansion hubs and can improve loop time.
@@ -182,15 +204,11 @@ public class MainDrive extends LinearOpMode {
             PoseBridge.clear();
             startX = initialPose.position.x;
             startY = initialPose.position.y;
-            startHeadingDeg = Math.toDegrees(initialPose.heading.toDouble());
+            startHeadingDeg = Math.toDegrees(initialPose.heading);
         } else {
             initialPose = new Pose2d(startX, startY, Math.toRadians(startHeadingDeg));
         }
-        // Create MecanumDrive first so PinpointLocalizer is the only component that configures
-        // the Pinpoint (encoder resolution, offsets, directions, resetPosAndIMU). This avoids
-        // multiple inits overwriting each other and prevents heading drift from wrong config.
-        mecanumDrive = new MecanumDrive(hardwareMap, initialPose);
-        mecanumDrive.localizer.setPose(initialPose);
+        pedroDrive = new PedroDrive(hardwareMap, initialPose);
         intake = new IntakeV2(hardwareMap, gamepad1, gamepad2, aprilTag);
         turret = new Turret(hardwareMap, gamepad2, cameFromAuto);
         airSort = new AirSort(aprilTag, intake.c1, intake.c2, intake.c3);
@@ -200,11 +218,11 @@ public class MainDrive extends LinearOpMode {
             if (gamepad1.dpad_left) {
                 mode = true;
                 applyAllianceMode();
-                mecanumDrive.localizer.setPose(new Pose2d(startX, startY, Math.toRadians(startHeadingDeg)));
+                pedroDrive.setPose(new Pose2d(startX, startY, Math.toRadians(startHeadingDeg)));
             } else if (gamepad1.dpad_right) {
                 mode = false;
                 applyAllianceMode();
-                mecanumDrive.localizer.setPose(new Pose2d(startX, startY, Math.toRadians(startHeadingDeg)));
+                pedroDrive.setPose(new Pose2d(startX, startY, Math.toRadians(startHeadingDeg)));
             }
             telemetry.addLine("--- INIT: Change alliance before Play ---");
             telemetry.addData("Alliance", mode ? "BLUE" : "RED");
@@ -212,9 +230,10 @@ public class MainDrive extends LinearOpMode {
             telemetry.addData("Goal", "%.0f, %.0f", goalX, goalY);
             telemetry.addData(">", "Dpad L=Blue  Dpad R=Red  Play=start");
             telemetry.update();
-            sleep(20);
+            sleep(LOOP_SLEEP_MS);
         }
         waitForStart();
+        pedroDrive.startTeleopDrive();
 
         // Debug log: uses app context so it works on Control Hub. Pull with:
         //   adb pull /sdcard/Android/data/com.qualcomm.ftcrobotcontroller/files/maindrive_log.txt
@@ -234,32 +253,30 @@ public class MainDrive extends LinearOpMode {
 
         try {
         while (opModeIsActive()) {
-            // --- 1. Odometry: update first so pose is valid every loop from the start ---
-            PoseVelocity2d driveVel = mecanumDrive.updatePoseEstimate();
-            Pose2d pose = mecanumDrive.localizer.getPose();
+            // ─── 1. Odometry and pose history ─── update first so pose is valid every loop from the start ---
+            pedroDrive.update();
+            Pose2d pose = pedroDrive.getPose();
             distanceX = pose.position.x - goalX;
             distanceY = pose.position.y - goalY;
             distance = Math.hypot(distanceX, distanceY);
 
             // Pose history for Dashboard path (localization viz)
             poseHistory.add(pose);
-            while (poseHistory.size() > 200) poseHistory.removeFirst();
+            while (poseHistory.size() > POSE_HISTORY_MAX) poseHistory.removeFirst();
 
-            // Re-zero Pinpoint IMU when Start is pressed (robot should be stationary). Reduces heading drift over time.
-            if (gamepad1.start && mecanumDrive.localizer instanceof PinpointLocalizer) {
-                PinpointLocalizer pl = (PinpointLocalizer) mecanumDrive.localizer;
-                pl.driver.resetPosAndIMU();
-                mecanumDrive.localizer.setPose(new Pose2d(pose.position.x, pose.position.y, 0));
+            // Re-zero heading when Start is pressed (robot should be stationary). Reduces heading drift over time.
+            if (gamepad1.start) {
+                pedroDrive.setPose(new Pose2d(pose.position.x, pose.position.y, 0));
             }
 
-            // --- 2. Turret: field-relative aim at goal. Optional velocity comp moves aim point so note lands at goal while moving. ---
-            turret.botHeading = Turret.wrapDeg360(Math.toDegrees(pose.heading.toDouble()));
-            // Robot velocity in field frame (in/s). Road Runner robot frame: x=forward, y=left; rotate by heading to get world.
-            Vector2d robotVel = driveVel.linearVel;
-            double h = pose.heading.toDouble();
-            double c = Math.cos(h), s = Math.sin(h);
-            double worldVx = c * robotVel.x - s * robotVel.y;
-            double worldVy = s * robotVel.x + c * robotVel.y;
+            updateAutoPark(pose);
+
+            // ─── 2. Turret: field-relative aim, velocity comp, dpad / nudge ─── field-relative aim at goal. Optional velocity comp moves aim point so note lands at goal while moving. ---
+            turret.botHeading = Turret.wrapDeg360(Math.toDegrees(pose.heading));
+            double[] vel = pedroDrive.getVelocity();
+            double[] worldVel = robotVelToWorld(vel[0], vel[1], pose.heading);
+            double worldVx = worldVel[0];
+            double worldVy = worldVel[1];
             // First pass: raw distance for time-of-flight estimate.
             double distRaw = getDistance();
             double[] hoodSpeedVel = ShotPhysics.hoodAndSpeedFromDistanceInches(distRaw);
@@ -301,7 +318,7 @@ public class MainDrive extends LinearOpMode {
             // Alliance can be changed during run: goal/start update (pose not reset)
             if (gamepad1.dpad_left) { mode = true; applyAllianceMode(); }
             else if (gamepad1.dpad_right) { mode = false; applyAllianceMode(); }
-            // --- 3. Close + far zone triangles. 8" circle around robot: if it crosses zone boundary, ready to shoot. ---
+            // ─── 3. Shooting zone, LED, telemetry ───
             int artifactCount = countArtifacts();
             double zoneRadius = ShootingZones.robotZoneCircleRadius;
             boolean circleInClose = ShootingZones.circleIntersectsCloseLaunchTriangle(pose.position.x, pose.position.y, zoneRadius);
@@ -321,8 +338,11 @@ public class MainDrive extends LinearOpMode {
             initTelemetry();
             telemetryAprilTag();
             getMotif();
-            // Drive: Road Runner active; when sticks idle, position hold resists pushes
-            driveWithPositionHold(pose);
+
+            // ─── Drive: manual or auto-park ───
+            if (!autoParkActive) {
+                driveWithPositionHold(pose);
+            }
             // Turret re-sync: X or Start (fixes gear skip). Center turret first, then press.
             // Encoder reset = turret at 0° robot-relative. Target = angle to goal so turret aims at goal.
             if (gamepad2.xWasPressed() || (gamepad2.start && !prevStart)) {
@@ -368,10 +388,10 @@ public class MainDrive extends LinearOpMode {
             intake.runIntake();
             intake.transfer();
 
-            // --- 4. Vision: camera distance (tags 20/24) and optional relocalization. ftcPose.range is meters; we store inches. ---
+            // ─── 4. Vision: camera distance, relocalization ─── camera distance (tags 20/24) and optional relocalization. ftcPose.range is meters; we store inches. ---
             cameraPose = null;
             cameraDistanceInches = Double.NaN;
-            double headingRad = pose.heading.toDouble();
+            double headingRad = pose.heading;
             for (AprilTagDetection d : aprilTag.getDetections()) {
                 if (d.metadata == null) continue;
                 if (d.id == 20 || d.id == 24) {
@@ -383,13 +403,16 @@ public class MainDrive extends LinearOpMode {
                 }
             }
 
-            // --- 5. FTC Dashboard: field drawing. Use camera relocalization as robot's estimated location when tag visible, else odometry. ---
+            // ─── 5. FTC Dashboard / Panels: field overlay and packet ─── field drawing. Use camera relocalization as robot's estimated location when tag visible, else odometry. ---
             TelemetryPacket packet = new TelemetryPacket();
             Pose2d displayPose = (cameraPose != null) ? cameraPose : pose;  // estimated robot location for field overlay
             Drawing.drawPoseHistory(packet.fieldOverlay(), poseHistory, "#3F51B5");   // path (odometry history)
             Drawing.drawRobot(packet.fieldOverlay(), displayPose, 1, cameraPose != null ? "#FF5722" : "#3F51B5"); // robot at estimated pose (orange = camera, blue = odom)
             if (cameraPose != null) Drawing.drawRobot(packet.fieldOverlay(), pose, 1, "#9FA8DA"); // odometry as lighter circle when camera active (compare)
             Drawing.drawGoal(packet.fieldOverlay(), goalX, goalY, "#4CAF50");         // goal (green)
+            if (autoParkActive) {
+                Drawing.drawVirtualGoal(packet.fieldOverlay(), goalX + parkNudgeX, goalY + parkNudgeY, "#9C27B0"); // park target (purple)
+            }
             Drawing.drawCloseLaunchTriangle(packet.fieldOverlay(),
                     ShootingZones.closeTriX1, ShootingZones.closeTriY1,
                     ShootingZones.closeTriX2, ShootingZones.closeTriY2,
@@ -421,7 +444,7 @@ public class MainDrive extends LinearOpMode {
             packet.put("odom_y", pose.position.y);
             packet.put("est_x", displayPose.position.x);
             packet.put("est_y", displayPose.position.y);
-            packet.put("odom_heading_deg", Math.toDegrees(pose.heading.toDouble()));
+            packet.put("odom_heading_deg", Math.toDegrees(pose.heading));
             packet.put("pose_src", cameraPose != null ? "camera (reloc)" : "Pinpoint (pods+IMU)");
             packet.put("angle_to_goal_deg", angleToGoalDeg);
             packet.put("turret_field_deg", turret.getTurretAngleField());
@@ -429,6 +452,9 @@ public class MainDrive extends LinearOpMode {
             packet.put("field_hold_deg", fieldHoldAngle);
             packet.put("vel_comp_on", turretVelocityCompensation && turretVelocityCompGain != 0);
             packet.put("position_hold", positionHoldEnabled);
+            packet.put("auto_park", autoParkActive);
+            packet.put("park_nudge_x", parkNudgeX);
+            packet.put("park_nudge_y", parkNudgeY);
             packet.put("launcher_mode", airSortActive ? "airsort (fast/slow)" : (IntakeV2.manualMode ? "manual (Dashboard)" : "auto (from distance)"));
             packet.put("airsort_on", airSortActive);
             if (airSortActive) {
@@ -461,14 +487,16 @@ public class MainDrive extends LinearOpMode {
                 packet.put("camera_x", cameraPose.position.x);
                 packet.put("camera_y", cameraPose.position.y);
             }
-            FtcDashboard.getInstance().sendTelemetryPacket(packet);
+            if (!usePanelsDashboard) {
+                FtcDashboard.getInstance().sendTelemetryPacket(packet);
+            }
 
             // Log when something changed meaningfully OR at fixed intervals (more frequent = more data)
             if (logWriter != null) {
                 logCounter++;
                 double rawRange = -1;
                 for (AprilTagDetection d : aprilTag.getDetections()) { if (d.metadata != null && d.id == CameraRelocalization.BLUE_GOAL_TAG_ID) { rawRange = d.ftcPose.range; break; } }
-                double poseHdDeg = Math.toDegrees(pose.heading.toDouble());
+                double poseHdDeg = Math.toDegrees(pose.heading);
                 double camX = cameraPose != null ? cameraPose.position.x : 0, camY = cameraPose != null ? cameraPose.position.y : 0;
                 double errDeg = turret.targetOutputDeg - turret.outputDeg;
                 double distToGoal = Math.hypot(pose.position.x - goalX, pose.position.y - goalY);
@@ -561,27 +589,60 @@ public class MainDrive extends LinearOpMode {
 
     }   // end method initAprilTag()
     /**
-     * Drive with Road Runner. When sticks idle (below deadband): zero power so BRAKE mode resists.
-     * Standard approach per Road Runner teleop—odometry feedback causes noise-driven movement.
+     * Auto-park: G1 left bumper toggles path-to-goal; right stick nudges target at small scale.
+     * When active, builds path to (goal + nudge) and follows; driver can adjust aim with right stick.
      */
+    private void updateAutoPark(Pose2d pose) {
+        if (gamepad1.left_bumper && !prevLeftBumper) {
+            autoParkActive = !autoParkActive;
+            if (!autoParkActive) {
+                pedroDrive.breakFollowing();
+            }
+            parkNudgeX = 0;
+            parkNudgeY = 0;
+        }
+        prevLeftBumper = gamepad1.left_bumper;
+
+        if (!autoParkActive) return;
+
+        double rx = gamepad1.right_stick_x;
+        double ry = -gamepad1.right_stick_y;
+        if (Math.abs(rx) < parkNudgeDeadband) rx = 0;
+        if (Math.abs(ry) < parkNudgeDeadband) ry = 0;
+        parkNudgeX = rx * parkNudgeScaleIn;
+        parkNudgeY = ry * parkNudgeScaleIn;
+
+        double tgtX = goalX + parkNudgeX;
+        double tgtY = goalY + parkNudgeY;
+        if (!pedroDrive.isBusy()) {
+            double endHeading = Math.atan2(tgtY - pose.position.y, tgtX - pose.position.x);
+            Pose2d endPose = new Pose2d(tgtX, tgtY, endHeading);
+            com.pedropathing.paths.PathChain path = pedroDrive.buildPath(pose, endPose);
+            pedroDrive.followPath(path, true);
+        }
+    }
+
+    /** When sticks idle (below deadband): zero power so brake resists. Else scale stick to Pedro teleop drive. */
     private void driveWithPositionHold(Pose2d pose) {
         double x = gamepad1.left_stick_x;
         double y = -gamepad1.left_stick_y;
         double turn = gamepad1.right_stick_x;
-        // Apply DriveTrain toggles (XYtoggle, Rtoggle) if we ever add a way to trigger them
         if (drivetrain.getXToggle()) { x *= 0.25; y *= 0.25; }
         if (drivetrain.getRToggle()) turn *= 0.25;
         double db = positionHoldDeadband;
         boolean idle = positionHoldEnabled
                 && Math.abs(x) < db && Math.abs(y) < db && Math.abs(turn) < db;
         if (idle) {
-            mecanumDrive.setDrivePowers(new PoseVelocity2d(new Vector2d(0, 0), 0));
+            pedroDrive.setTeleOpDrive(0, 0, 0, false);
         } else {
-            PoseVelocity2d vel = new PoseVelocity2d(
-                    new Vector2d(y * driveScale, -x * driveScale),
-                    -turn * driveScale);
-            mecanumDrive.setDrivePowers(vel);
+            pedroDrive.setTeleOpDrive(y * driveScale, -x * driveScale, -turn * driveScale, false);
         }
+    }
+
+    /** Robot-frame (vx, vy) to world-frame [worldVx, worldVy] given heading (rad). */
+    private static double[] robotVelToWorld(double vx, double vy, double headingRad) {
+        double c = Math.cos(headingRad), s = Math.sin(headingRad);
+        return new double[]{c * vx - s * vy, s * vx + c * vy};
     }
 
     /** Sets start pose and goal from current alliance mode (red vs blue). Called in init and when dpad L/R pressed. */
@@ -600,14 +661,15 @@ public class MainDrive extends LinearOpMode {
         // --- 1. Alliance & localization (odometry, pose, goal) ---
         telemetry.addLine("--- Alliance & localization ---");
         telemetry.addData("Alliance", mode ? "BLUE" : "RED");
-        telemetry.addData("Pose (x, y, heading)", mecanumDrive.localizer.getPose());
-        telemetry.addData("Heading deg", Math.toDegrees(mecanumDrive.localizer.getPose().heading.toDouble()));
+        telemetry.addData("Pose (x, y, heading)", pedroDrive.getPose());
+        telemetry.addData("Heading deg", Math.toDegrees(pedroDrive.getPose().heading));
         telemetry.addData("Dist to goal in", distance);
         telemetry.addData("Goal (x, y)", "%.0f, %.0f", goalX, goalY);
 
         // --- 2. Drive ---
         telemetry.addLine("");
         telemetry.addLine("--- Drive ---");
+        telemetry.addData("Auto-park", autoParkActive ? "ON (G1 LB=off, R stick=nudge)" : "OFF (G1 LB=on)");
         telemetry.addData("Position hold", positionHoldEnabled ? "ON (idle=brake)" : "OFF");
         telemetry.addData("X toggle (strafe)", drivetrain.getXToggle());
         telemetry.addData("R toggle (rotate)", drivetrain.getRToggle());
@@ -655,6 +717,33 @@ public class MainDrive extends LinearOpMode {
         telemetry.addData("G1 right trigger", "%.2f (intake+transfer when >0.25)", gamepad1.right_trigger);
 
         telemetry.update();
+        if (usePanelsDashboard && panelsTelemetry != null) {
+            updatePanelsTelemetry(panelsTelemetry, telemetry);
+        }
+    }
+
+    /** Get Panels TelemetryManager via reflection (com.bylazar.ftcontrol.panels.Panels or com.bylazar.panels). */
+    private static Object getPanelsTelemetry() {
+        try {
+            Class<?> panelsClass = Class.forName("com.bylazar.ftcontrol.panels.Panels");
+            java.lang.reflect.Method m = panelsClass.getMethod("getTelemetry");
+            return m.invoke(null);
+        } catch (Throwable t) {
+            try {
+                Class<?> panelsClass = Class.forName("com.bylazar.panels.Panels");
+                java.lang.reflect.Method m = panelsClass.getMethod("getTelemetry");
+                return m.invoke(null);
+            } catch (Throwable t2) {
+                return null;
+            }
+        }
+    }
+
+    /** Call TelemetryManager.update(telemetry) via reflection. */
+    private static void updatePanelsTelemetry(Object panelsTelemetry, org.firstinspires.ftc.robotcore.external.Telemetry telemetry) {
+        try {
+            panelsTelemetry.getClass().getMethod("update", org.firstinspires.ftc.robotcore.external.Telemetry.class).invoke(panelsTelemetry, telemetry);
+        } catch (Throwable ignored) { }
     }
     /**
      * Manual turret mode: Y = enable, B = disable.

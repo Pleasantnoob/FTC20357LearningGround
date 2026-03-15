@@ -24,17 +24,16 @@ android {
 }
 
 repositories {
-    maven {
-        url = 'https://maven.brott.dev/'
-    }
+    maven { url = 'https://maven.brott.dev/' }
+    maven { url = 'https://mymaven.bylazar.com/releases' }
 }
 
 dependencies {
     implementation project(':FtcRobotController')
     implementation 'org.ftclib.ftclib:core:2.1.1'
+    implementation "com.acmerobotics.dashboard:dashboard:0.5.1"
+    // Road Runner: still required by RR package and unconverted autos (Auto2025RedFarMovesRight, Auto2025RedNearOdometryAim, AutoV2, AutoV3, BlueNearExp). Remove after converting those to Pedro.
     implementation "com.acmerobotics.roadrunner:ftc:0.1.25"
     implementation "com.acmerobotics.roadrunner:core:1.0.1"
     implementation "com.acmerobotics.roadrunner:actions:1.0.1"
-    implementation "com.acmerobotics.dashboard:dashboard:0.5.1"
-
 }

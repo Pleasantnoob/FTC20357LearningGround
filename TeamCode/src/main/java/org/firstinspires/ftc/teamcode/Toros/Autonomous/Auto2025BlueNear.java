@@ -3,15 +3,13 @@ package org.firstinspires.ftc.teamcode.Toros.Autonomous;
 import androidx.annotation.NonNull;
 
 import com.acmerobotics.dashboard.telemetry.TelemetryPacket;
-import com.acmerobotics.roadrunner.Action;
-import com.acmerobotics.roadrunner.InstantAction;
-import com.acmerobotics.roadrunner.ParallelAction;
-import com.acmerobotics.roadrunner.Pose2d;
-import com.acmerobotics.roadrunner.SequentialAction;
-import com.acmerobotics.roadrunner.SleepAction;
-import com.acmerobotics.roadrunner.TranslationalVelConstraint;
-import com.acmerobotics.roadrunner.Vector2d;
-import com.acmerobotics.roadrunner.ftc.Actions;
+import org.firstinspires.ftc.teamcode.util.Action;
+import org.firstinspires.ftc.teamcode.util.Actions;
+import org.firstinspires.ftc.teamcode.util.FollowPathAction;
+import org.firstinspires.ftc.teamcode.util.ParallelAction;
+import org.firstinspires.ftc.teamcode.util.Pose2d;
+import org.firstinspires.ftc.teamcode.util.SequentialAction;
+import org.firstinspires.ftc.teamcode.util.SleepAction;
 import com.arcrobotics.ftclib.controller.PIDController;
 import com.arcrobotics.ftclib.controller.wpilibcontroller.SimpleMotorFeedforward;
 import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
@@ -29,7 +27,7 @@ import org.firstinspires.ftc.robotcore.external.hardware.camera.BuiltinCameraDir
 import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
 import org.firstinspires.ftc.teamcode.RR.PoseBridge;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
-import org.firstinspires.ftc.teamcode.RR.MecanumDrive;
+import org.firstinspires.ftc.teamcode.Toros.Drive.PedroDrive;
 import org.firstinspires.ftc.teamcode.Toros.Drive.MainDrive;
 import org.firstinspires.ftc.teamcode.Toros.Drive.Subsystems.IntakeV2;
 import org.firstinspires.ftc.teamcode.Toros.Drive.Subsystems.Turret;
@@ -235,8 +233,7 @@ public class Auto2025BlueNear extends LinearOpMode {
 
         // Start pose = teleop blue (MainDrive). Path waypoints from blueNear (MeepMeep).
         Pose2d initialPose = new Pose2d(MainDrive.blueStartX, MainDrive.blueStartY, Math.toRadians(MainDrive.blueStartHeadingDeg));
-        MecanumDrive drive = new MecanumDrive(hardwareMap, initialPose);
-        drive.localizer.setPose(initialPose);
+        PedroDrive drive = new PedroDrive(hardwareMap, initialPose);
         AprilTagProcessor aprilTag = new AprilTagProcessor.Builder().build();
         IntakeV2 intake = new IntakeV2(hardwareMap, gamepad1, gamepad2, aprilTag);
         IntakeSub intakeSub = new IntakeSub(intake);
@@ -247,39 +244,27 @@ public class Auto2025BlueNear extends LinearOpMode {
         telemetry.update();
         waitForStart();
 
-        // Trajectories from blueNear (MeepMeep)
-        Action tab1 = drive.actionBuilder(initialPose)
-                .strafeToLinearHeading(new Vector2d(-12, -12), Math.toRadians(270)) // Preload
-                .build();
-        Action tab2 = drive.actionBuilder(new Pose2d(-12, -12, Math.toRadians(270)))
-                .strafeToLinearHeading(new Vector2d(-12, -28), Math.toRadians(270)) // first spike
-                .strafeTo(new Vector2d(-12, -53)) // first spike intake
-                .build();
-        Action tab3 = drive.actionBuilder(new Pose2d(-12, -53, Math.toRadians(270)))
-                .strafeToLinearHeading(new Vector2d(-12, -13), Math.toRadians(270)) // launch first spike
-                .build();
-        Action tab4 = drive.actionBuilder(new Pose2d(-12, -13, Math.toRadians(270)))
-                .setTangent(Math.toRadians(315))
-                .splineToLinearHeading(new Pose2d(12, -28, Math.toRadians(270)), Math.toRadians(270)) // second spike
-                .strafeTo(new Vector2d(12, -53)) // second spike intake
-                .build();
-        Action tab5 = drive.actionBuilder(new Pose2d(12, -53, Math.toRadians(270)))
-                .setTangent(Math.toRadians(90))
-                .splineToLinearHeading(new Pose2d(-13, -12, Math.toRadians(270)), Math.toRadians(90))
-                .build();
-        // Gate: drive to gate, intake, back to shoot zone
-        Action tab6_gate = drive.actionBuilder(new Pose2d(-13, -12, Math.toRadians(270)))
-                .strafeToLinearHeading(new Vector2d(12, -59), Math.toRadians(235))
-                .build();
-        Action tab7_back = drive.actionBuilder(new Pose2d(12, -59, Math.toRadians(235)))
-                .strafeToLinearHeading(new Vector2d(-13, -12), Math.toRadians(250))
-                .build();
-        Action tab8_gate = drive.actionBuilder(new Pose2d(-13, -12, Math.toRadians(250)))
-                .strafeToLinearHeading(new Vector2d(12, -59), Math.toRadians(235))
-                .build();
-        Action tab10_park = drive.actionBuilder(new Pose2d(12, -59, Math.toRadians(235)))
-                .strafeToLinearHeading(new Vector2d(-35, -15), Math.toRadians(-128))
-                .build();
+        // Pedro paths (blue: negative Y)
+        double r270 = Math.toRadians(270), r235 = Math.toRadians(235), r250 = Math.toRadians(250), r128 = Math.toRadians(-128);
+        Pose2d b1 = new Pose2d(-12, -12, r270);
+        Pose2d b2 = new Pose2d(-12, -28, r270);
+        Pose2d b3 = new Pose2d(-12, -53, r270);
+        Pose2d b4 = new Pose2d(-12, -13, r270);
+        Pose2d b5 = new Pose2d(12, -28, r270);
+        Pose2d b6 = new Pose2d(12, -53, r270);
+        Pose2d b7 = new Pose2d(-13, -12, r270);
+        Pose2d b8 = new Pose2d(12, -59, r235);
+        Pose2d b9 = new Pose2d(-13, -12, r250);
+        Pose2d b10 = new Pose2d(-35, -15, r128);
+        Action tab1 = new FollowPathAction(drive, drive.buildPath(initialPose, b1));
+        Action tab2 = new FollowPathAction(drive, drive.buildPathChain(b1, b2, b3));
+        Action tab3 = new FollowPathAction(drive, drive.buildPath(b3, b4));
+        Action tab4 = new FollowPathAction(drive, drive.buildPathChain(b4, b5, b6));
+        Action tab5 = new FollowPathAction(drive, drive.buildPath(b6, b7));
+        Action tab6_gate = new FollowPathAction(drive, drive.buildPath(b7, b8));
+        Action tab7_back = new FollowPathAction(drive, drive.buildPath(b8, b9));
+        Action tab8_gate = new FollowPathAction(drive, drive.buildPath(b9, b8));
+        Action tab10_park = new FollowPathAction(drive, drive.buildPath(b8, b10));
 
 
         if (opModeIsActive()) {
@@ -324,20 +309,20 @@ public class Auto2025BlueNear extends LinearOpMode {
                     new StopLauncherAction(intake),
                     new SetFlagAndEndAction()
             );
-            Actions.runBlocking(new ParallelAction(
+            Actions.runBlocking(this, new ParallelAction(
                     new TurretAimAction(drive, turret, GOAL_X, GOAL_Y),
                     new HoodAndFlywheelUpdateAction(drive, intake, GOAL_X, GOAL_Y),
                     new LedFadeAction(led, () -> autoRunning),
                     mainSequence
             ));
 
-            PoseBridge.save(drive.localizer.getPose());
+            PoseBridge.save(drive.getPose());
             PoseBridge.saveAlliance(true);  // Blue
             intake.stopLauncherAuto();
             intake.runIntakeAuto(false);
 
             while (opModeIsActive()) {
-                telemetry.addData("Pose", drive.localizer.getPose());
+                telemetry.addData("Pose", drive.getPose());
                 telemetry.update();
                 sleep(20);
             }
@@ -347,14 +332,14 @@ public class Auto2025BlueNear extends LinearOpMode {
 
     /** Rev + turret aim at goal for duration; uses pose distance for hood/flywheel (same as teleop). */
     private static class RevAndAimAction implements Action {
-        private final MecanumDrive drive;
+        private final PedroDrive drive;
         private final IntakeV2 intake;
         private final Turret turret;
         private final double duration;
         private final ElapsedTime timer = new ElapsedTime();
         private boolean init;
 
-        RevAndAimAction(MecanumDrive drive, IntakeV2 intake, Turret turret, double duration) {
+        RevAndAimAction(PedroDrive drive, IntakeV2 intake, Turret turret, double duration) {
             this.drive = drive;
             this.intake = intake;
             this.turret = turret;
@@ -367,15 +352,15 @@ public class Auto2025BlueNear extends LinearOpMode {
                 timer.reset();
                 init = true;
             }
-            drive.updatePoseEstimate();
-            Pose2d pose = drive.localizer.getPose();
+            drive.update();
+            Pose2d pose = drive.getPose();
             double dx = GOAL_X - pose.position.x;
             double dy = GOAL_Y - pose.position.y;
             double dist = Math.hypot(dx, dy);
             double angleToGoalDeg = Turret.wrapDeg360(Math.toDegrees(Math.atan2(dy, dx)));
             intake.setHoodAndFlywheelFromDistance(dist);
             intake.runLauncherAuto(false);
-            turret.botHeading = Turret.wrapDeg360(Math.toDegrees(pose.heading.toDouble()));
+            turret.botHeading = Turret.wrapDeg360(Math.toDegrees(pose.heading));
             turret.targetAngle = angleToGoalDeg;
             turret.runTurretGyro();
             return timer.seconds() < duration;
@@ -384,14 +369,14 @@ public class Auto2025BlueNear extends LinearOpMode {
 
     /** Shoot: rev + aim + feed for duration (same shot physics as teleop). */
     private static class ShootAction implements Action {
-        private final MecanumDrive drive;
+        private final PedroDrive drive;
         private final IntakeV2 intake;
         private final Turret turret;
         private final double duration;
         private final ElapsedTime timer = new ElapsedTime();
         private boolean init;
 
-        ShootAction(MecanumDrive drive, IntakeV2 intake, Turret turret, double duration) {
+        ShootAction(PedroDrive drive, IntakeV2 intake, Turret turret, double duration) {
             this.drive = drive;
             this.intake = intake;
             this.turret = turret;
@@ -404,15 +389,15 @@ public class Auto2025BlueNear extends LinearOpMode {
                 timer.reset();
                 init = true;
             }
-            drive.updatePoseEstimate();
-            Pose2d pose = drive.localizer.getPose();
+            drive.update();
+            Pose2d pose = drive.getPose();
             double dx = GOAL_X - pose.position.x;
             double dy = GOAL_Y - pose.position.y;
             double dist = Math.hypot(dx, dy);
             double angleToGoalDeg = Turret.wrapDeg360(Math.toDegrees(Math.atan2(dy, dx)));
             intake.setHoodAndFlywheelFromDistance(dist);
             intake.runLauncherAuto(true);
-            turret.botHeading = Turret.wrapDeg360(Math.toDegrees(pose.heading.toDouble()));
+            turret.botHeading = Turret.wrapDeg360(Math.toDegrees(pose.heading));
             turret.targetAngle = angleToGoalDeg;
             turret.runTurretGyro();
             if (timer.seconds() >= duration) {
@@ -447,12 +432,12 @@ public class Auto2025BlueNear extends LinearOpMode {
 
     /** Continuously aims turret at blue goal using odometry pose. Runs in parallel with main sequence until it ends. */
     private class TurretAimAction implements Action {
-        private final MecanumDrive drive;
+        private final PedroDrive drive;
         private final Turret turret;
         private final double goalX;
         private final double goalY;
 
-        TurretAimAction(MecanumDrive drive, Turret turret, double goalX, double goalY) {
+        TurretAimAction(PedroDrive drive, Turret turret, double goalX, double goalY) {
             this.drive = drive;
             this.turret = turret;
             this.goalX = goalX;
@@ -465,12 +450,12 @@ public class Auto2025BlueNear extends LinearOpMode {
                 turret.turretPow(0);
                 return false;
             }
-            drive.updatePoseEstimate();
-            Pose2d pose = drive.localizer.getPose();
+            drive.update();
+            Pose2d pose = drive.getPose();
             double dx = goalX - pose.position.x;
             double dy = goalY - pose.position.y;
             double angleToGoalDeg = Turret.wrapDeg360(Math.toDegrees(Math.atan2(dy, dx)));
-            turret.botHeading = Turret.wrapDeg360(Math.toDegrees(pose.heading.toDouble()));
+            turret.botHeading = Turret.wrapDeg360(Math.toDegrees(pose.heading));
             turret.targetAngle = angleToGoalDeg;
             turret.runTurretGyro();
             return true;
@@ -479,12 +464,12 @@ public class Auto2025BlueNear extends LinearOpMode {
 
     /** Continuously updates hood angle and flywheel target velocity from current odometry distance to blue goal. Runs in parallel with main sequence. */
     private class HoodAndFlywheelUpdateAction implements Action {
-        private final MecanumDrive drive;
+        private final PedroDrive drive;
         private final IntakeV2 intake;
         private final double goalX;
         private final double goalY;
 
-        HoodAndFlywheelUpdateAction(MecanumDrive drive, IntakeV2 intake, double goalX, double goalY) {
+        HoodAndFlywheelUpdateAction(PedroDrive drive, IntakeV2 intake, double goalX, double goalY) {
             this.drive = drive;
             this.intake = intake;
             this.goalX = goalX;
@@ -493,8 +478,8 @@ public class Auto2025BlueNear extends LinearOpMode {
 
         @Override
         public boolean run(@NonNull TelemetryPacket p) {
-            drive.updatePoseEstimate();
-            Pose2d pose = drive.localizer.getPose();
+            drive.update();
+            Pose2d pose = drive.getPose();
             double dist = Math.hypot(goalX - pose.position.x, goalY - pose.position.y);
             intake.setHoodAndFlywheelFromDistance(dist);
             intake.runLauncherAuto(false); // rev the whole time

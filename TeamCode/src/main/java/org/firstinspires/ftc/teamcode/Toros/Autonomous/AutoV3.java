@@ -5,24 +5,16 @@ import androidx.annotation.NonNull;
 import com.acmerobotics.dashboard.config.Config;
 import com.acmerobotics.dashboard.telemetry.TelemetryPacket;
 import com.acmerobotics.roadrunner.Action;
-import com.acmerobotics.roadrunner.InstantAction;
-import com.acmerobotics.roadrunner.InstantFunction;
-import com.acmerobotics.roadrunner.ParallelAction;
 import com.acmerobotics.roadrunner.Pose2d;
 import com.acmerobotics.roadrunner.SequentialAction;
 import com.acmerobotics.roadrunner.SleepAction;
 import com.acmerobotics.roadrunner.Vector2d;
 import com.acmerobotics.roadrunner.ftc.Actions;
-import com.arcrobotics.ftclib.controller.PIDController;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
-import com.qualcomm.robotcore.hardware.DcMotor;
-import com.qualcomm.robotcore.hardware.DcMotorEx;
-import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.Servo;
-import com.qualcomm.robotcore.util.ElapsedTime;
 
 import org.firstinspires.ftc.teamcode.RR.MecanumDrive;
 import org.firstinspires.ftc.teamcode.RR.PoseBridge;
@@ -30,75 +22,6 @@ import org.firstinspires.ftc.teamcode.RR.PoseBridge;
 @Autonomous(name = "AUTOV3")
 @Disabled
 public class AutoV3 extends LinearOpMode {
-
-
-    private int target1 = 0;
-    public class Lift {
-        private DcMotorEx slideLeft, slideRight,pivot;
-
-        public Lift(HardwareMap hardwareMap){
-            slideLeft = hardwareMap.get(DcMotorEx.class,"slideLeft");
-            slideRight = hardwareMap.get(DcMotorEx.class,"slideRight");
-            pivot = hardwareMap.get(DcMotorEx.class,"pivot");
-            slideLeft.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-            slideRight.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-            slideLeft.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-            slideRight.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-
-            slideLeft.setDirection(DcMotorSimple.Direction.REVERSE);
-        }
-        public class LiftUp implements Action{
-            private boolean inited = false;
-            @Override
-            public boolean run(@NonNull TelemetryPacket telemetryPacket) {
-                if(!inited){
-                    pivot.setPower(0.2);
-                    inited = true;
-                }
-                ElapsedTime timer = new ElapsedTime();
-                return timer.seconds() == 3;
-            }
-        }
-        public Action liftUp(){
-            return new LiftUp();
-        }
-
-
-       public class PIDLift implements Action{
-            boolean runPID = true;
-
-           @Override
-           public boolean run(@NonNull TelemetryPacket telemetryPacket) {
-               PIDController controller;
-               double p1 = 0.006, i1 = 0.01, d1 = 0.00005;
-
-               double f1 = 0.005;
-
-               controller = new PIDController(p1,i1,d1);
-               double ticks_in_degrees = 1440/180;
-
-               controller.setPID(p1,i1,d1);
-               int armPos = slideLeft.getCurrentPosition();
-               double pid = controller.calculate(armPos, target1);
-               double ff = Math.cos(Math.toRadians(target1/ticks_in_degrees)) * f1;
-
-               double power = pid + ff;
-
-
-               slideLeft.setPower(power);
-               slideRight.setPower(power);
-
-               return true;
-           }
-       }
-       public Action armLift(){
-            return new PIDLift();
-       }
-       public Action changetarget (int target){
-            return new InstantAction(() -> target1 = target);
-        }
-
-    }
 
 
     public class Claw{
@@ -140,7 +63,6 @@ public class AutoV3 extends LinearOpMode {
     public void runOpMode() throws InterruptedException {
         Pose2d initialPose = new Pose2d(9,-61,Math.toRadians(90));
         MecanumDrive drive = new MecanumDrive(hardwareMap, initialPose);
-        Lift lift = new Lift(hardwareMap);
         Claw claw = new Claw(hardwareMap);
 
 //        Actions.runBlocking(claw.closeFingers());
@@ -200,37 +122,16 @@ public class AutoV3 extends LinearOpMode {
 
         waitForStart();
         Actions.runBlocking(
-                new ParallelAction(
-                        lift.armLift(),
-                        new SequentialAction(
-                                claw.closeFingers(),
-                                lift.changetarget(-1800),
-                                traj1,
-                                new SleepAction(1),
-                                lift.changetarget(-100),
-                                //new SleepAction(3),
-                                new SleepAction(1),
-                                claw.openFingers(),
-                                park
-                                //traj2,
-                                //traj3
-                                //traj4,
-                                //traj5,
-                                //traj6,
-                                //traj7
-//
-//                       // tab1A,
-//                        //lift.changeTarget(-250),
-//                        //claw.openFingers(),
-//                        //trajectoryActionCloseOut,
-//                       // lift.changeTarget(0)
-                )
-//
-
+                new SequentialAction(
+                        claw.closeFingers(),
+                        traj1,
+                        new SleepAction(1),
+                        claw.openFingers(),
+                        park
                 )
         );
 
-        PoseBridge.save(drive.localizer.getPose());
+        PoseBridge.save(org.firstinspires.ftc.teamcode.util.Pose2d.fromRR(drive.localizer.getPose()));
         PoseBridge.saveAlliance(true);  // Blue
 
         telemetry.update();

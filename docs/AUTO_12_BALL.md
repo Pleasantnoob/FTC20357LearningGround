@@ -4,7 +4,7 @@
 
 - **3 preloaded** balls + **9** picked up from spike marks = **12 balls** shot.
 - Uses the **same logic as teleop**: Pinpoint odometry, IntakeV2 regression (hood + flywheel from distance), Turret aim at goal (field angle, wrap ±180°).
-- Road Runner trajectories: `strafeToLinearHeading`, `strafeTo` with optional `TranslationalVelConstraint`.
+- Pedro Pathing paths: `PedroDrive.buildPath` / `buildPathChain` with waypoints (Pose2d) and linear heading interpolation.
 
 ## OpMode
 

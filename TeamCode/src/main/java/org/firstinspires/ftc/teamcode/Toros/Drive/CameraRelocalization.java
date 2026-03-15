@@ -1,8 +1,8 @@
 package org.firstinspires.ftc.teamcode.Toros.Drive;
 
 import com.acmerobotics.dashboard.config.Config;
-import com.acmerobotics.roadrunner.Pose2d;
-import com.acmerobotics.roadrunner.Vector2d;
+import org.firstinspires.ftc.teamcode.util.Pose2d;
+import org.firstinspires.ftc.teamcode.util.Vector2d;
 
 import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
 

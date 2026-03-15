@@ -5,8 +5,8 @@ import android.util.Size;
 import com.acmerobotics.dashboard.FtcDashboard;
 import com.acmerobotics.dashboard.telemetry.MultipleTelemetry;
 import com.acmerobotics.dashboard.telemetry.TelemetryPacket;
-import com.acmerobotics.roadrunner.Pose2d;
-import com.acmerobotics.roadrunner.Vector2d;
+import org.firstinspires.ftc.teamcode.util.Pose2d;
+import org.firstinspires.ftc.teamcode.util.Vector2d;
 import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
@@ -14,7 +14,7 @@ import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import org.firstinspires.ftc.robotcore.external.hardware.camera.BuiltinCameraDirection;
 import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
 import org.firstinspires.ftc.teamcode.RR.Drawing;
-import org.firstinspires.ftc.teamcode.RR.MecanumDrive;
+import org.firstinspires.ftc.teamcode.Toros.Drive.PedroDrive;
 import org.firstinspires.ftc.vision.VisionPortal;
 import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
 import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
@@ -33,7 +33,7 @@ public class CameraRelocTest extends LinearOpMode {
 
     private AprilTagProcessor aprilTag;
     private VisionPortal visionPortal;
-    private MecanumDrive mecanumDrive;
+    private PedroDrive pedroDrive;
 
     @Override
     public void runOpMode() throws InterruptedException {
@@ -51,17 +51,18 @@ public class CameraRelocTest extends LinearOpMode {
         // Pinpoint odometry (same start as MainDrive default)
         double startX = -48.0, startY = -50.0, startHeadingDeg = -90.0;
         Pose2d initialPose = new Pose2d(startX, startY, Math.toRadians(startHeadingDeg));
-        mecanumDrive = new MecanumDrive(hardwareMap, initialPose);
-        mecanumDrive.localizer.setPose(initialPose);
+        pedroDrive = new PedroDrive(hardwareMap, initialPose);
+        pedroDrive.startTeleopDrive();
 
         telemetry.addLine("Init done. Press Play.");
         telemetry.update();
         waitForStart();
 
         while (opModeIsActive()) {
-            mecanumDrive.updatePoseEstimate();
-            Pose2d pinpointPose = mecanumDrive.localizer.getPose();
-            double headingRad = pinpointPose.heading.toDouble();
+            pedroDrive.setTeleOpDrive(-gamepad1.left_stick_y, -gamepad1.left_stick_x, -gamepad1.right_stick_x, false);
+            pedroDrive.update();
+            Pose2d pinpointPose = pedroDrive.getPose();
+            double headingRad = pinpointPose.heading;
 
             // Camera relocalization: blue goal tag only
             Pose2d cameraPose = null;

@@ -1,9 +1,8 @@
 package org.firstinspires.ftc.teamcode.Toros.Drive.Subsystems;
 
 import com.acmerobotics.dashboard.config.Config;
-import com.acmerobotics.roadrunner.Pose2d;
-import com.acmerobotics.roadrunner.PoseVelocity2d;
-import com.acmerobotics.roadrunner.Vector2d;
+import org.firstinspires.ftc.teamcode.util.Pose2d;
+import org.firstinspires.ftc.teamcode.util.Vector2d;
 import com.arcrobotics.ftclib.controller.PIDController;
 import com.arcrobotics.ftclib.controller.wpilibcontroller.SimpleMotorFeedforward;
 
@@ -17,8 +16,6 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.Servo;
 
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
-import org.firstinspires.ftc.teamcode.RR.MecanumDrive;
-import org.firstinspires.ftc.teamcode.RR.PinpointLocalizer;
 import org.firstinspires.ftc.teamcode.Toros.Drive.MainDrive;
 import org.firstinspires.ftc.teamcode.Toros.Drive.ShotPhysics;
 import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
@@ -367,7 +364,8 @@ public class IntakeV2 {
 
         double robotVelocity = getVel();
 
-        double coordinateTheta =  Math.atan(pinpoint.getVelY()/pinpoint.getVelY()) - Math.atan(MainDrive.getDistanceY()/ MainDrive.getDistanceX());
+        double dx = MainDrive.getDistanceX();
+        double coordinateTheta = Math.atan2(pinpoint.getVelY(), pinpoint.getVelx()) - (Math.abs(dx) > 1e-6 ? Math.atan2(MainDrive.getDistanceY(), dx) : 0);
 
         double parallel = -Math.cos(coordinateTheta) * Math.abs(robotVelocity);
         double perpendicular = Math.sin(coordinateTheta) * Math.abs(robotVelocity);

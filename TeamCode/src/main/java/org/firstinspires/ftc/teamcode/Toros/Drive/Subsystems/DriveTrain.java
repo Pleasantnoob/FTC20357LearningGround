@@ -5,15 +5,22 @@ import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.Gamepad;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
-
+/**
+ * Mecanum drive subsystem: motors + field-centric / robot-centric helpers.
+ * Heading for field-centric comes from Pinpoint (odometry), not from IntakeV2.
+ * MainDrive uses this only for toggles (XY/R) and drives via PedroDrive; other opmodes may call driveFieldCentric().
+ */
 public class DriveTrain {
 
-    private DcMotor FrontLeftMotor,BackLeftMotor,FrontRightMotor,BackRightMotor; //Motors
+    private final DcMotor FrontLeftMotor, BackLeftMotor, FrontRightMotor, BackRightMotor;
+    private final Pinpoint pinpoint;
     public double botHeading;
-    private boolean Rtoggle, XYtoggle; // Toggles for turning down the speed of the robot
-    Gamepad currentGamepad1 = new Gamepad(); //fragment of the toggles. needed just in case
-    Gamepad gamepad1; // the gamepad which we intialize when we construct the class in the actual drive program
-    public DriveTrain(HardwareMap hardwareMap,Gamepad gamepad){
+    private boolean Rtoggle, XYtoggle;
+    private final Gamepad currentGamepad1 = new Gamepad();
+    private Gamepad gamepad1;
+
+    public DriveTrain(HardwareMap hardwareMap, Gamepad gamepad) {
+        pinpoint = new Pinpoint(hardwareMap);
         FrontLeftMotor = hardwareMap.get(DcMotor.class, "fl");
         BackLeftMotor = hardwareMap.get(DcMotor.class, "bl");
         FrontRightMotor = hardwareMap.get(DcMotor.class, "fr");
@@ -84,7 +91,7 @@ public class DriveTrain {
         //These vectors then determine how much we move in a direction
         //In summary based of the angle the powers will be different changing how the robot moves
 
-        botHeading = IntakeV2.getHeading();
+        botHeading = pinpoint.getHeading();
         double rotX = x * Math.cos(botHeading) - y * Math.sin(botHeading);
         double rotY = x * Math.sin(botHeading) + y * Math.cos(botHeading);
         rotX = -rotX*1.1;
@@ -131,8 +138,7 @@ public class DriveTrain {
         double sin = Math.sin(theta - Math.PI / 4);
         double cos = Math.cos(theta - Math.PI / 4);
         double max = Math.max(Math.abs(sin), Math.abs(cos));
-        botHeading = IntakeV2.getHeading();
-
+        botHeading = pinpoint.getHeading();
 
         /**
          In basics this is taking the x and y of the left stick making them into an angle

@@ -3,7 +3,7 @@ package org.firstinspires.ftc.teamcode.Toros.Autonomous;
 import androidx.annotation.NonNull;
 
 import com.acmerobotics.dashboard.telemetry.TelemetryPacket;
-import com.acmerobotics.roadrunner.Action;
+import org.firstinspires.ftc.teamcode.util.Action;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
@@ -13,7 +13,8 @@ import java.util.function.BooleanSupplier;
  * Fades LED between min and max values during autonomous. Run in parallel with main sequence.
  * Stops when keepRunning returns false (e.g. when SetFlagAndEndAction runs).
  */
-public class LedFadeAction implements Action {
+/** Implements both util.Action and RR Action so it works in Pedro and RR parallel actions. */
+public class LedFadeAction implements Action, com.acmerobotics.roadrunner.Action {
     private static final double LED_MIN = 0.2799;
     private static final double LED_MAX = 0.728;
     private static final double FADE_PERIOD_SEC = 2.0;

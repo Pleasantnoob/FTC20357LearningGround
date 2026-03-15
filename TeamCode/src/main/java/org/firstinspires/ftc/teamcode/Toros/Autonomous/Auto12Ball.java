@@ -2,20 +2,18 @@ package org.firstinspires.ftc.teamcode.Toros.Autonomous;
 
 import androidx.annotation.NonNull;
 
-import com.acmerobotics.roadrunner.Action;
-import com.acmerobotics.roadrunner.ParallelAction;
-import com.acmerobotics.roadrunner.Pose2d;
-import com.acmerobotics.roadrunner.SequentialAction;
-import com.acmerobotics.roadrunner.SleepAction;
-import com.acmerobotics.roadrunner.TranslationalVelConstraint;
-import com.acmerobotics.roadrunner.Vector2d;
-import com.acmerobotics.roadrunner.ftc.Actions;
 import com.acmerobotics.dashboard.telemetry.TelemetryPacket;
+import org.firstinspires.ftc.teamcode.util.Action;
+import org.firstinspires.ftc.teamcode.util.Actions;
+import org.firstinspires.ftc.teamcode.util.FollowPathAction;
+import org.firstinspires.ftc.teamcode.util.ParallelAction;
+import org.firstinspires.ftc.teamcode.util.Pose2d;
+import org.firstinspires.ftc.teamcode.util.SequentialAction;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
-import org.firstinspires.ftc.teamcode.RR.MecanumDrive;
+import org.firstinspires.ftc.teamcode.Toros.Drive.PedroDrive;
 import org.firstinspires.ftc.teamcode.RR.PoseBridge;
 import org.firstinspires.ftc.teamcode.Toros.Drive.Subsystems.IntakeV2;
 import org.firstinspires.ftc.teamcode.Toros.Drive.Subsystems.Turret;
@@ -45,7 +43,7 @@ public class Auto12Ball extends LinearOpMode {
     private static final double SPIKE2_X = 12.0,  SPIKE2_Y_END = -53.0;
     private static final double SPIKE3_X = 30.0, SPIKE3_Y_END = -55.0;
 
-    private MecanumDrive drive;
+    private PedroDrive drive;
     private IntakeV2 intake;
     private Turret turret;
     private AprilTagProcessor aprilTag;
@@ -53,8 +51,7 @@ public class Auto12Ball extends LinearOpMode {
     @Override
     public void runOpMode() throws InterruptedException {
         Pose2d initialPose = new Pose2d(START_X, START_Y, START_HEADING_RAD);
-        drive = new MecanumDrive(hardwareMap, initialPose);
-        drive.localizer.setPose(initialPose);
+        drive = new PedroDrive(hardwareMap, initialPose);
         aprilTag = new AprilTagProcessor.Builder().build();
         intake = new IntakeV2(hardwareMap, gamepad1, gamepad2, aprilTag);
         turret = new Turret(hardwareMap, gamepad2);
@@ -65,50 +62,25 @@ public class Auto12Ball extends LinearOpMode {
 
         if (!opModeIsActive()) return;
 
-        // 1) Drive to shoot position
-        Action toShoot = drive.actionBuilder(initialPose)
-                .strafeToLinearHeading(new Vector2d(SHOOT_X, SHOOT_Y), SHOOT_HEADING_RAD, new TranslationalVelConstraint(40))
-                .build();
-
-        // 2) Rev + aim (2 s) then shoot 3 (4 s)
+        Pose2d shootPose = new Pose2d(SHOOT_X, SHOOT_Y, SHOOT_HEADING_RAD);
+        Pose2d spike1 = new Pose2d(SPIKE1_X, SPIKE1_Y_END - 15, SHOOT_HEADING_RAD);
+        Pose2d spike1End = new Pose2d(SPIKE1_X, SPIKE1_Y_END, SHOOT_HEADING_RAD);
+        Pose2d spike2 = new Pose2d(SPIKE2_X, SPIKE2_Y_END - 15, SHOOT_HEADING_RAD);
+        Pose2d spike2End = new Pose2d(SPIKE2_X, SPIKE2_Y_END, SHOOT_HEADING_RAD);
+        Pose2d spike3 = new Pose2d(SPIKE3_X, SPIKE3_Y_END - 15, SHOOT_HEADING_RAD);
+        Pose2d spike3End = new Pose2d(SPIKE3_X, SPIKE3_Y_END, SHOOT_HEADING_RAD);
+        Action toShoot = new FollowPathAction(drive, drive.buildPath(initialPose, shootPose));
         Action revAndAim = new RevAndAimAction(drive, intake, turret, 2.0);
         Action shoot3 = new ShootAction(drive, intake, turret, 4.0);
-
-        // 3) To spike 1, intake
-        Action toSpike1 = drive.actionBuilder(new Pose2d(SHOOT_X, SHOOT_Y, SHOOT_HEADING_RAD))
-                .strafeToLinearHeading(new Vector2d(SPIKE1_X, SPIKE1_Y_END - 15), SHOOT_HEADING_RAD)
-                .strafeTo(new Vector2d(SPIKE1_X, SPIKE1_Y_END), new TranslationalVelConstraint(25))
-                .build();
+        Action toSpike1 = new FollowPathAction(drive, drive.buildPathChain(shootPose, spike1, spike1End));
         Action intakeRun1 = new IntakeRunAction(intake, 3.0);
-
-        // 4) Back to shoot, shoot 3
-        Action backToShoot1 = drive.actionBuilder(new Pose2d(SPIKE1_X, SPIKE1_Y_END, SHOOT_HEADING_RAD))
-                .strafeToLinearHeading(new Vector2d(SHOOT_X, SHOOT_Y), SHOOT_HEADING_RAD, new TranslationalVelConstraint(40))
-                .build();
-
-        // 5) To spike 2, intake
-        Action toSpike2 = drive.actionBuilder(new Pose2d(SHOOT_X, SHOOT_Y, SHOOT_HEADING_RAD))
-                .strafeToLinearHeading(new Vector2d(SPIKE2_X, SPIKE2_Y_END - 15), SHOOT_HEADING_RAD)
-                .strafeTo(new Vector2d(SPIKE2_X, SPIKE2_Y_END), new TranslationalVelConstraint(25))
-                .build();
+        Action backToShoot1 = new FollowPathAction(drive, drive.buildPath(spike1End, shootPose));
+        Action toSpike2 = new FollowPathAction(drive, drive.buildPathChain(shootPose, spike2, spike2End));
         Action intakeRun2 = new IntakeRunAction(intake, 3.0);
-
-        // 6) Back to shoot, shoot 3
-        Action backToShoot2 = drive.actionBuilder(new Pose2d(SPIKE2_X, SPIKE2_Y_END, SHOOT_HEADING_RAD))
-                .strafeToLinearHeading(new Vector2d(SHOOT_X, SHOOT_Y), SHOOT_HEADING_RAD, new TranslationalVelConstraint(40))
-                .build();
-
-        // 7) To spike 3, intake
-        Action toSpike3 = drive.actionBuilder(new Pose2d(SHOOT_X, SHOOT_Y, SHOOT_HEADING_RAD))
-                .strafeToLinearHeading(new Vector2d(SPIKE3_X, SPIKE3_Y_END - 15), SHOOT_HEADING_RAD)
-                .strafeTo(new Vector2d(SPIKE3_X, SPIKE3_Y_END), new TranslationalVelConstraint(25))
-                .build();
+        Action backToShoot2 = new FollowPathAction(drive, drive.buildPath(spike2End, shootPose));
+        Action toSpike3 = new FollowPathAction(drive, drive.buildPathChain(shootPose, spike3, spike3End));
         Action intakeRun3 = new IntakeRunAction(intake, 3.0);
-
-        // 8) Back to shoot, shoot last 3
-        Action backToShoot3 = drive.actionBuilder(new Pose2d(SPIKE3_X, SPIKE3_Y_END, SHOOT_HEADING_RAD))
-                .strafeToLinearHeading(new Vector2d(SHOOT_X, SHOOT_Y), SHOOT_HEADING_RAD, new TranslationalVelConstraint(40))
-                .build();
+        Action backToShoot3 = new FollowPathAction(drive, drive.buildPath(spike3End, shootPose));
 
         SequentialAction main = new SequentialAction(
                 toShoot,
@@ -129,9 +101,9 @@ public class Auto12Ball extends LinearOpMode {
                 new StopLauncherAction(intake)
         );
 
-        Actions.runBlocking(main);
+        Actions.runBlocking(this, main);
 
-        PoseBridge.save(drive.localizer.getPose());
+        PoseBridge.save(drive.getPose());
         PoseBridge.saveAlliance(true);  // Blue
         intake.stopLauncherAuto();
         intake.runIntakeAuto(false);
@@ -139,14 +111,14 @@ public class Auto12Ball extends LinearOpMode {
 
     /** Runs rev + turret aim for duration seconds. Uses pose for distance and angle to goal. */
     private static class RevAndAimAction implements Action {
-        private final MecanumDrive drive;
+        private final PedroDrive drive;
         private final IntakeV2 intake;
         private final Turret turret;
         private final double duration;
         private final ElapsedTime timer = new ElapsedTime();
         private boolean init;
 
-        RevAndAimAction(MecanumDrive drive, IntakeV2 intake, Turret turret, double duration) {
+        RevAndAimAction(PedroDrive drive, IntakeV2 intake, Turret turret, double duration) {
             this.drive = drive;
             this.intake = intake;
             this.turret = turret;
@@ -159,15 +131,15 @@ public class Auto12Ball extends LinearOpMode {
                 timer.reset();
                 init = true;
             }
-            drive.updatePoseEstimate();
-            Pose2d pose = drive.localizer.getPose();
+            drive.update();
+            Pose2d pose = drive.getPose();
             double dx = GOAL_X - pose.position.x;
             double dy = GOAL_Y - pose.position.y;
             double dist = Math.hypot(dx, dy);
             double angleToGoalDeg = Turret.wrapDeg360(Math.toDegrees(Math.atan2(dy, dx)));
             intake.setHoodAndFlywheelFromDistance(dist);
             intake.runLauncherAuto(false);
-            turret.botHeading = Turret.wrapDeg360(Math.toDegrees(pose.heading.toDouble()));
+            turret.botHeading = Turret.wrapDeg360(Math.toDegrees(pose.heading));
             turret.targetAngle = angleToGoalDeg;
             turret.runTurretGyro();
             return timer.seconds() < duration;
@@ -176,14 +148,14 @@ public class Auto12Ball extends LinearOpMode {
 
     /** Runs rev + aim + feed for duration seconds (shoot). */
     private static class ShootAction implements Action {
-        private final MecanumDrive drive;
+        private final PedroDrive drive;
         private final IntakeV2 intake;
         private final Turret turret;
         private final double duration;
         private final ElapsedTime timer = new ElapsedTime();
         private boolean init;
 
-        ShootAction(MecanumDrive drive, IntakeV2 intake, Turret turret, double duration) {
+        ShootAction(PedroDrive drive, IntakeV2 intake, Turret turret, double duration) {
             this.drive = drive;
             this.intake = intake;
             this.turret = turret;
@@ -196,15 +168,15 @@ public class Auto12Ball extends LinearOpMode {
                 timer.reset();
                 init = true;
             }
-            drive.updatePoseEstimate();
-            Pose2d pose = drive.localizer.getPose();
+            drive.update();
+            Pose2d pose = drive.getPose();
             double dx = GOAL_X - pose.position.x;
             double dy = GOAL_Y - pose.position.y;
             double dist = Math.hypot(dx, dy);
             double angleToGoalDeg = Turret.wrapDeg360(Math.toDegrees(Math.atan2(dy, dx)));
             intake.setHoodAndFlywheelFromDistance(dist);
             intake.runLauncherAuto(true);
-            turret.botHeading = Turret.wrapDeg360(Math.toDegrees(pose.heading.toDouble()));
+            turret.botHeading = Turret.wrapDeg360(Math.toDegrees(pose.heading));
             turret.targetAngle = angleToGoalDeg;
             turret.runTurretGyro();
             if (timer.seconds() >= duration) {

@@ -3,20 +3,18 @@ package org.firstinspires.ftc.teamcode.Toros.Autonomous;
 import androidx.annotation.NonNull;
 
 import com.acmerobotics.dashboard.telemetry.TelemetryPacket;
-import com.acmerobotics.roadrunner.Action;
-import com.acmerobotics.roadrunner.ParallelAction;
-import com.acmerobotics.roadrunner.Pose2d;
-import com.acmerobotics.roadrunner.SequentialAction;
-import com.acmerobotics.roadrunner.SleepAction;
-import com.acmerobotics.roadrunner.TranslationalVelConstraint;
-import com.acmerobotics.roadrunner.Vector2d;
-import com.acmerobotics.roadrunner.ftc.Actions;
+import org.firstinspires.ftc.teamcode.util.Action;
+import org.firstinspires.ftc.teamcode.util.Actions;
+import org.firstinspires.ftc.teamcode.util.FollowPathAction;
+import org.firstinspires.ftc.teamcode.util.ParallelAction;
+import org.firstinspires.ftc.teamcode.util.Pose2d;
+import org.firstinspires.ftc.teamcode.util.SequentialAction;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
-import org.firstinspires.ftc.teamcode.RR.MecanumDrive;
+import org.firstinspires.ftc.teamcode.Toros.Drive.PedroDrive;
 import org.firstinspires.ftc.teamcode.RR.PoseBridge;
 import org.firstinspires.ftc.teamcode.Toros.Drive.MainDrive;
 import org.firstinspires.ftc.teamcode.Toros.Drive.Subsystems.IntakeV2;
@@ -70,8 +68,7 @@ public class Auto2025BlueFar extends LinearOpMode {
     @Override
     public void runOpMode() {
         Pose2d initialPose = new Pose2d(60, -10, Math.toRadians(270));
-        MecanumDrive drive = new MecanumDrive(hardwareMap, initialPose);
-        drive.localizer.setPose(initialPose);
+        PedroDrive drive = new PedroDrive(hardwareMap, initialPose);
         aprilTag = new AprilTagProcessor.Builder().build();
         IntakeV2 intake = new IntakeV2(hardwareMap, gamepad1, gamepad2, aprilTag);
         Turret turret = new Turret(hardwareMap, gamepad2);
@@ -81,34 +78,21 @@ public class Auto2025BlueFar extends LinearOpMode {
         telemetry.update();
         waitForStart();
 
-        // Trajectories from blueFar (MeepMeep), negative Y
-        Action tab1 = drive.actionBuilder(initialPose)
-                .strafeToLinearHeading(new Vector2d(60, -62), Math.toRadians(270))
-                .build();
-        Action tab2 = drive.actionBuilder(new Pose2d(60, -62, Math.toRadians(270)))
-                .strafeToLinearHeading(new Vector2d(50, -62), Math.toRadians(270))
-                .strafeToLinearHeading(new Vector2d(60, -50), Math.toRadians(270))
-                .strafeToLinearHeading(new Vector2d(60, -62), Math.toRadians(270))
-                .strafeToLinearHeading(new Vector2d(50, -62), Math.toRadians(270))
-                .build();
-        Action tab3 = drive.actionBuilder(new Pose2d(50, -62, Math.toRadians(270)))
-                .strafeToLinearHeading(new Vector2d(60, -20), Math.toRadians(270), new TranslationalVelConstraint(100))
-                .build();
-        Action tab4 = drive.actionBuilder(new Pose2d(60, -20, Math.toRadians(270)))
-                .strafeTo(new Vector2d(60, -60))
-                .build();
-        Action tab5 = drive.actionBuilder(new Pose2d(60, -60, Math.toRadians(270)))
-                .strafeTo(new Vector2d(60, -20))
-                .build();
-        Action tab6 = drive.actionBuilder(new Pose2d(60, -20, Math.toRadians(270)))
-                .strafeTo(new Vector2d(60, -60))
-                .build();
-        Action tab7 = drive.actionBuilder(new Pose2d(60, -60, Math.toRadians(270)))
-                .strafeTo(new Vector2d(60, -20))
-                .build();
-        Action tab10 = drive.actionBuilder(new Pose2d(60, -20, Math.toRadians(270)))
-                .strafeTo(new Vector2d(50, -30))
-                .build();
+        double r270 = Math.toRadians(270);
+        Pose2d p1 = new Pose2d(60, -62, r270);
+        Pose2d p2a = new Pose2d(50, -62, r270);
+        Pose2d p2b = new Pose2d(60, -50, r270);
+        Pose2d p3 = new Pose2d(60, -20, r270);
+        Pose2d p4 = new Pose2d(60, -60, r270);
+        Pose2d p5 = new Pose2d(50, -30, r270);
+        Action tab1 = new FollowPathAction(drive, drive.buildPath(initialPose, p1));
+        Action tab2 = new FollowPathAction(drive, drive.buildPathChain(p1, p2a, p2b, p1, p2a));
+        Action tab3 = new FollowPathAction(drive, drive.buildPath(p2a, p3));
+        Action tab4 = new FollowPathAction(drive, drive.buildPath(p3, p4));
+        Action tab5 = new FollowPathAction(drive, drive.buildPath(p4, p3));
+        Action tab6 = new FollowPathAction(drive, drive.buildPath(p3, p4));
+        Action tab7 = new FollowPathAction(drive, drive.buildPath(p4, p3));
+        Action tab10 = new FollowPathAction(drive, drive.buildPath(p3, p5));
 
         if (opModeIsActive()) {
             try {
@@ -142,20 +126,20 @@ public class Auto2025BlueFar extends LinearOpMode {
                     new StopLauncherAction(intake),
                     new SetFlagAndEndAction()
             );
-            Actions.runBlocking(new ParallelAction(
+            Actions.runBlocking(this, new ParallelAction(
                     new TurretAimAction(drive, turret, GOAL_X, GOAL_Y),
                     new HoodAndFlywheelUpdateAction(drive, intake, GOAL_X, GOAL_Y),
                     new LedFadeAction(led, () -> autoRunning),
                     mainSequence
             ));
 
-            PoseBridge.save(drive.localizer.getPose());
+            PoseBridge.save(drive.getPose());
             PoseBridge.saveAlliance(true);  // Blue
             intake.stopLauncherAuto();
             intake.runIntakeAuto(false);
 
             while (opModeIsActive()) {
-                telemetry.addData("Pose", drive.localizer.getPose());
+                telemetry.addData("Pose", drive.getPose());
                 telemetry.update();
                 sleep(20);
             }
@@ -166,14 +150,14 @@ public class Auto2025BlueFar extends LinearOpMode {
     }
 
     private static class RevAndAimAction implements Action {
-        private final MecanumDrive drive;
+        private final PedroDrive drive;
         private final IntakeV2 intake;
         private final Turret turret;
         private final double duration;
         private final ElapsedTime timer = new ElapsedTime();
         private boolean init;
 
-        RevAndAimAction(MecanumDrive drive, IntakeV2 intake, Turret turret, double duration) {
+        RevAndAimAction(PedroDrive drive, IntakeV2 intake, Turret turret, double duration) {
             this.drive = drive;
             this.intake = intake;
             this.turret = turret;
@@ -186,15 +170,15 @@ public class Auto2025BlueFar extends LinearOpMode {
                 timer.reset();
                 init = true;
             }
-            drive.updatePoseEstimate();
-            Pose2d pose = drive.localizer.getPose();
+            drive.update();
+            Pose2d pose = drive.getPose();
             double dx = GOAL_X - pose.position.x;
             double dy = GOAL_Y - pose.position.y;
             double dist = Math.hypot(dx, dy);
             double angleToGoalDeg = Turret.wrapDeg360(Math.toDegrees(Math.atan2(dy, dx)));
             intake.setHoodAndFlywheelFromDistance(dist);
             intake.runLauncherAuto(false);
-            turret.botHeading = Turret.wrapDeg360(Math.toDegrees(pose.heading.toDouble()));
+            turret.botHeading = Turret.wrapDeg360(Math.toDegrees(pose.heading));
             turret.targetAngle = angleToGoalDeg;
             turret.runTurretGyro();
             return timer.seconds() < duration;
@@ -203,14 +187,14 @@ public class Auto2025BlueFar extends LinearOpMode {
 
     private static class ShootAction implements Action {
         private final Auto2025BlueFar outer;
-        private final MecanumDrive drive;
+        private final PedroDrive drive;
         private final IntakeV2 intake;
         private final Turret turret;
         private final double duration;
         private final ElapsedTime timer = new ElapsedTime();
         private boolean init;
 
-        ShootAction(Auto2025BlueFar outer, MecanumDrive drive, IntakeV2 intake, Turret turret, double duration) {
+        ShootAction(Auto2025BlueFar outer, PedroDrive drive, IntakeV2 intake, Turret turret, double duration) {
             this.outer = outer;
             this.drive = drive;
             this.intake = intake;
@@ -225,15 +209,15 @@ public class Auto2025BlueFar extends LinearOpMode {
                 init = true;
                 outer.isShooting = true;
             }
-            drive.updatePoseEstimate();
-            Pose2d pose = drive.localizer.getPose();
+            drive.update();
+            Pose2d pose = drive.getPose();
             double dx = GOAL_X - pose.position.x;
             double dy = GOAL_Y - pose.position.y;
             double dist = Math.hypot(dx, dy);
             double angleToGoalDeg = Turret.wrapDeg360(Math.toDegrees(Math.atan2(dy, dx)));
             intake.setHoodAndFlywheelFromDistance(dist);
             intake.runLauncherAuto(true);
-            turret.botHeading = Turret.wrapDeg360(Math.toDegrees(pose.heading.toDouble()));
+            turret.botHeading = Turret.wrapDeg360(Math.toDegrees(pose.heading));
             turret.targetAngle = angleToGoalDeg;
             turret.runTurretGyro();
             if (timer.seconds() >= duration) {
@@ -267,12 +251,12 @@ public class Auto2025BlueFar extends LinearOpMode {
     }
 
     private class TurretAimAction implements Action {
-        private final MecanumDrive drive;
+        private final PedroDrive drive;
         private final Turret turret;
         private final double goalX;
         private final double goalY;
 
-        TurretAimAction(MecanumDrive drive, Turret turret, double goalX, double goalY) {
+        TurretAimAction(PedroDrive drive, Turret turret, double goalX, double goalY) {
             this.drive = drive;
             this.turret = turret;
             this.goalX = goalX;
@@ -285,12 +269,12 @@ public class Auto2025BlueFar extends LinearOpMode {
                 turret.turretPow(0);
                 return false;
             }
-            drive.updatePoseEstimate();
-            Pose2d pose = drive.localizer.getPose();
+            drive.update();
+            Pose2d pose = drive.getPose();
             double dx = goalX - pose.position.x;
             double dy = goalY - pose.position.y;
             double angleToGoalDeg = Turret.wrapDeg360(Math.toDegrees(Math.atan2(dy, dx)));
-            turret.botHeading = Turret.wrapDeg360(Math.toDegrees(pose.heading.toDouble()));
+            turret.botHeading = Turret.wrapDeg360(Math.toDegrees(pose.heading));
             turret.targetAngle = angleToGoalDeg;
             turret.runTurretGyro();
             return true;
@@ -298,12 +282,12 @@ public class Auto2025BlueFar extends LinearOpMode {
     }
 
     private class HoodAndFlywheelUpdateAction implements Action {
-        private final MecanumDrive drive;
+        private final PedroDrive drive;
         private final IntakeV2 intake;
         private final double goalX;
         private final double goalY;
 
-        HoodAndFlywheelUpdateAction(MecanumDrive drive, IntakeV2 intake, double goalX, double goalY) {
+        HoodAndFlywheelUpdateAction(PedroDrive drive, IntakeV2 intake, double goalX, double goalY) {
             this.drive = drive;
             this.intake = intake;
             this.goalX = goalX;
@@ -312,8 +296,8 @@ public class Auto2025BlueFar extends LinearOpMode {
 
         @Override
         public boolean run(@NonNull TelemetryPacket p) {
-            drive.updatePoseEstimate();
-            Pose2d pose = drive.localizer.getPose();
+            drive.update();
+            Pose2d pose = drive.getPose();
             double dist = Math.hypot(goalX - pose.position.x, goalY - pose.position.y);
             intake.setHoodAndFlywheelFromDistance(dist);
             intake.runLauncherAuto(isShooting);
