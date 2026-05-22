@@ -151,6 +151,111 @@ public class IntakeV2 {
 
     }
 
+    // ---------- Demo / Showcase teleop launcher (Gamepad 2 only) ----------
+    public static int DEMO_VEL_STEP = 100;
+    public static double demoHoodStepDeg = 2.0;
+    public static double demoTargetVel = -1600.0;
+    public static final double DEMO_VEL_MIN = -2000.0;
+    public static final double DEMO_VEL_MAX = -800.0;
+    public static int demoRumbleMs = 300;
+    private boolean demoPrevAtSpeed = false;
+
+    /**
+     * Showcase launcher: manual hood + demoTargetVel, G2 d-pad velocity/hood, triggers rev/fire.
+     * G2 B hard-stops all launcher/intake motors.
+     */
+    public void runLauncherDemo() {
+        if (gamepad2 == null) return;
+
+        if (gamepad2.b) {
+            launch.setPower(0);
+            intakeMotor.setPower(0);
+            trans.setPower(0);
+            demoPrevAtSpeed = false;
+            return;
+        }
+
+        vel = Math.hypot(pinpoint.getVelx(), pinpoint.getVelY());
+        heading = pinpoint.getHeading();
+
+        if (gamepad2.dpadLeftWasPressed()) {
+            manualHoodAngleDeg -= demoHoodStepDeg;
+        } else if (gamepad2.dpadRightWasPressed()) {
+            manualHoodAngleDeg += demoHoodStepDeg;
+        }
+        manualHoodAngleDeg = Math.max(minAngle, Math.min(maxAngle, manualHoodAngleDeg));
+
+        double hoodValue = minServo + ((70.0 - manualHoodAngleDeg) / 30.0) * (maxServo - minServo);
+        hood.setPosition(hoodValue);
+        lastHoodValue = -1;
+
+        if (gamepad2.dpadUpWasPressed()) {
+            demoTargetVel -= DEMO_VEL_STEP;
+        } else if (gamepad2.dpadDownWasPressed()) {
+            demoTargetVel += DEMO_VEL_STEP;
+        }
+        demoTargetVel = Math.max(DEMO_VEL_MIN, Math.min(DEMO_VEL_MAX, demoTargetVel));
+        targetVel = (int) demoTargetVel;
+
+        boolean atSpeed = false;
+        if (gamepad2.left_trigger > 0.1) {
+            controller.setPID(p1, i1, d1);
+            double launchVel = launch.getVelocity();
+            SimpleMotorFeedforward feedforward = new SimpleMotorFeedforward(kS, kV, kA);
+            double pid = controller.calculate(launchVel, targetVel);
+            double ff = feedforward.calculate(targetVel, accel);
+            launch.setPower(pid + ff);
+            atSpeed = Math.abs(launchVel - targetVel) <= SHOOT_VEL_TOLERANCE;
+        } else {
+            launch.setPower(0);
+        }
+
+        if (atSpeed && !demoPrevAtSpeed) {
+            gamepad2.rumble(demoRumbleMs);
+        }
+        demoPrevAtSpeed = atSpeed && gamepad2.left_trigger > 0.1;
+
+        if (gamepad2.right_trigger > 0.1) {
+            if (Math.abs(launch.getVelocity() - targetVel) <= SHOOT_VEL_TOLERANCE) {
+                trans.setPower(-1.0);
+                intakeMotor.setPower(-1.0);
+            } else {
+                trans.setPower(0);
+                intakeMotor.setPower(0);
+            }
+        } else {
+            trans.setPower(0);
+            if (gamepad2.left_trigger < 0.1) {
+                intakeMotor.setPower(0);
+            }
+        }
+    }
+
+    /** G2 bumpers for loading demo balls. RB = intake in, LB = intake out. Skipped while shooting. */
+    public void runDemoIntake() {
+        if (gamepad2 == null) return;
+        if (gamepad2.b || gamepad2.right_trigger > 0.1) return;
+
+        if (gamepad2.right_bumper) {
+            intakeMotor.setPower(-1.0);
+            trans.setPower(-0.2);
+        } else if (gamepad2.left_bumper) {
+            intakeMotor.setPower(1.0);
+            trans.setPower(0);
+        } else if (gamepad2.left_trigger < 0.1) {
+            intakeMotor.setPower(0);
+            trans.setPower(0);
+        }
+    }
+
+    public double getDemoTargetVel() {
+        return demoTargetVel;
+    }
+
+    public boolean isAtTargetSpeed() {
+        return Math.abs(launch.getVelocity() - targetVel) <= SHOOT_VEL_TOLERANCE;
+    }
+
 
 
     public void runIntake() {

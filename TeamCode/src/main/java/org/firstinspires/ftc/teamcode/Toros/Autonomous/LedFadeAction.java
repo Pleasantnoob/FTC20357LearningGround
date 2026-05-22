@@ -15,9 +15,20 @@ import java.util.function.BooleanSupplier;
  */
 /** Implements both util.Action and RR Action so it works in Pedro and RR parallel actions. */
 public class LedFadeAction implements Action, com.acmerobotics.roadrunner.Action {
-    private static final double LED_MIN = 0.2799;
-    private static final double LED_MAX = 0.728;
-    private static final double FADE_PERIOD_SEC = 2.0;
+    public static final double LED_MIN = 0.2799;
+    public static final double LED_MAX = 0.728;
+    public static final double FADE_PERIOD_SEC = 2.0;
+
+    /** Sine fade position for elapsed time (seconds). Shared by auto actions and DemoTeleop. */
+    public static double fadePosition(double elapsedSec) {
+        double t = elapsedSec / FADE_PERIOD_SEC;
+        return LED_MIN + (LED_MAX - LED_MIN) * (0.5 + 0.5 * Math.sin(2 * Math.PI * t));
+    }
+
+    /** Alias for teleop callers; same as {@link #fadePosition(double)}. */
+    public static double positionAtSeconds(double elapsedSec) {
+        return fadePosition(elapsedSec);
+    }
 
     private final Servo led;
     private final BooleanSupplier keepRunning;
@@ -31,9 +42,7 @@ public class LedFadeAction implements Action, com.acmerobotics.roadrunner.Action
     @Override
     public boolean run(@NonNull TelemetryPacket p) {
         if (!keepRunning.getAsBoolean()) return false;
-        double t = timer.seconds() / FADE_PERIOD_SEC;
-        double pos = LED_MIN + (LED_MAX - LED_MIN) * (0.5 + 0.5 * Math.sin(2 * Math.PI * t));
-        led.setPosition(pos);
+        led.setPosition(fadePosition(timer.seconds()));
         return true;
     }
 }
