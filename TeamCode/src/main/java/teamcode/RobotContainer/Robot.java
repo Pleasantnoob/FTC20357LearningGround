@@ -29,8 +29,7 @@ public class Robot {
     public TurretHood turretHood;
 
 
-    //intake & transfer is 2nd
-    //drive & shoot is 1st
+    // Gamepad 1 drives, collects, and shoots. Gamepad 2 only overrides the turret.
 
 
 
@@ -51,6 +50,12 @@ public class Robot {
         matchLoader = new MatchLoader(hardwareMap);
         turretHood = new TurretHood(hardwareMap);
 
+    }
+
+    public void stop() {
+        drivetrain.stop();
+        intake.forceStop();
+        shooter.emergencyShooterStop();
     }
 
     //figure out a way to either make the follower public in this file or make follower public in

@@ -95,22 +95,23 @@ public class FarRedBaseAuto extends LinearOpMode {
         Scheduler.reset();
         follower = Constants.create(hardwareMap);
         robot = new Robot(hardwareMap);
-        poseStorage = new PoseStorage();
-        follower.setPose(startPos);
-        poseStorage.setAlliance(PoseStorage.Alliance.RED);
-        Scheduler.schedule(autoRoutine());
-        waitForStart();
-        while (opModeIsActive()) {
-            follower.update();
-            Scheduler.execute();
+        try {
+            poseStorage = new PoseStorage();
+            follower.setPose(startPos);
+            poseStorage.setAlliance(PoseStorage.Alliance.RED);
+            Scheduler.schedule(autoRoutine());
+            waitForStart();
+            while (opModeIsActive()) {
+                follower.update();
+                Scheduler.execute();
 
-            telemetry.update();
-            telemetry.addData("Robot PosX", follower.pose().x());
-            telemetry.addData("Robot PosY", follower.pose().y());
-            telemetry.addData("Robot Heading", follower.pose().heading());
-
+                telemetry.update();
+                telemetry.addData("Robot PosX", follower.pose().x());
+                telemetry.addData("Robot PosY", follower.pose().y());
+                telemetry.addData("Robot Heading", follower.pose().heading());
+            }
+        } finally {
+            robot.stop();
         }
-
-
     }
 }

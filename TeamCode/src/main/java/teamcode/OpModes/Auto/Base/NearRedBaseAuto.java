@@ -104,30 +104,26 @@ public class NearRedBaseAuto extends LinearOpMode {
         Scheduler.reset();
         follower = Constants.create(hardwareMap);
         robot = new Robot(hardwareMap);
-        poseStorage = new PoseStorage();
-        poseStorage.setAlliance(PoseStorage.Alliance.RED);
-        follower.setPose(startPos);
-        Scheduler.schedule(autoRoutine());
-        waitForStart();
+        try {
+            poseStorage = new PoseStorage();
+            poseStorage.setAlliance(PoseStorage.Alliance.RED);
+            follower.setPose(startPos);
+            Scheduler.schedule(autoRoutine());
+            waitForStart();
 
-        while (opModeIsActive()) {
+            while (opModeIsActive()) {
+                follower.update();
+                robot.shooter.setBaseTargetRPM(2240);
+                robot.shooter.calculateShooterPID();
+                Scheduler.execute();
 
-            follower.update();
-            robot.shooter.setBaseTargetRPM(2240);
-
-
-            robot.shooter.calculateShooterPID();
-
-
-            Scheduler.execute();
-
-            telemetry.update();
-            telemetry.addData("Robot PosX", follower.pose().x());
-            telemetry.addData("Robot PosY", follower.pose().y());
-            telemetry.addData("Robot Heading", follower.pose().heading());
-
+                telemetry.update();
+                telemetry.addData("Robot PosX", follower.pose().x());
+                telemetry.addData("Robot PosY", follower.pose().y());
+                telemetry.addData("Robot Heading", follower.pose().heading());
+            }
+        } finally {
+            robot.stop();
         }
-
-
     }
 }

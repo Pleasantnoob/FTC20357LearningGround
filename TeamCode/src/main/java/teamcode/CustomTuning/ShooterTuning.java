@@ -6,6 +6,7 @@ import com.acmerobotics.dashboard.telemetry.MultipleTelemetry;
 import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.util.ElapsedTime;
 
 import teamcode.RobotContainer.DriveProcesses;
 import teamcode.RobotContainer.Robot;
@@ -16,9 +17,9 @@ import teamcode.Subsystems.Shooter;
 @Config
 @TeleOp
 public class ShooterTuning extends LinearOpMode {
-    public static double kV = 0.0008;
+    public static double kV = 0.0002;
     public static double kS = 0.07;
-    public static double kP = 0.005;
+    public static double kP = 0.00125;
 
     //540 is a good number, it is give or take 10
     public static int goalRPM = 2240;
@@ -36,11 +37,15 @@ public class ShooterTuning extends LinearOpMode {
     public void runOpMode(){
         shooter = new Shooter(hardwareMap);
         robot = new Robot(hardwareMap);
-        driveProcesses = new DriveProcesses(robot, hardwareMap, gamepad1, gamepad2);
+        driveProcesses = new DriveProcesses(robot, gamepad1, gamepad2);
 
         telemetry = new MultipleTelemetry(telemetry, FtcDashboard.getInstance().getTelemetry());
         waitForStart();
+        ElapsedTime loopTimer = new ElapsedTime();
+        try {
         while(opModeIsActive()){
+            double dt = loopTimer.seconds();
+            loopTimer.reset();
 
             // Quick Tuning Tutorial
             //      1. set kV and kP to 0, then tune kS until the flywheel begins spinning
@@ -55,11 +60,8 @@ public class ShooterTuning extends LinearOpMode {
             double feedBack = error * kP;
             double power = feedForward + feedBack;
 
-
-
+            driveProcesses.update(0, 0, 0, dt);
             shooter.setShooterMotorPowers(power);
-
-            driveProcesses.intakeDriveUpdate();
 
 
             telemetry.addData("kP: ", "%.6f", kP);
@@ -68,6 +70,9 @@ public class ShooterTuning extends LinearOpMode {
             telemetry.addData("ticksPerSec", shooter.getTicksPerSec());
             telemetry.update();
 
+        }
+        } finally {
+            robot.stop();
         }
     }
 }

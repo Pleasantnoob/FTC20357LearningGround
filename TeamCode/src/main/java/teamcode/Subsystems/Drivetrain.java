@@ -6,6 +6,9 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 
 public class Drivetrain {
 
+    // Teleop is open-loop power. Belted output is about 500 RPM, which does not
+    // change this mix. Pedro's max velocity still needs a retune on the new drive.
+
     private DcMotor lf_motor;
     private DcMotor lb_motor;
     private DcMotor rf_motor;
@@ -15,6 +18,7 @@ public class Drivetrain {
     private double lb_motor_power;
     private double rf_motor_power;
     private double rb_motor_power;
+    private boolean stopped = true;
 
     public Drivetrain(HardwareMap hardwareMap){
         lf_motor = hardwareMap.get(DcMotor.class, "lf_motor");
@@ -40,7 +44,7 @@ public class Drivetrain {
         rf_motor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         rb_motor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
 
-
+        cutPower();
     }
 
 
@@ -53,17 +57,31 @@ public class Drivetrain {
         rb_motor_power = -vertical - horizontal + strafe;
 
         if((Math.abs(vertical) + Math.abs(horizontal) + Math.abs(strafe)) != 0) {
+            stopped = false;
             lf_motor.setPower(lf_motor_power / absTotalPower);
             lb_motor.setPower(lb_motor_power / absTotalPower);
             rf_motor.setPower(rf_motor_power / absTotalPower);
             rb_motor.setPower(rb_motor_power / absTotalPower);
 
-        } else {
-            lf_motor.setPower(0);
-            lb_motor.setPower(0);
-            rf_motor.setPower(0);
-            rb_motor.setPower(0);
+        } else if (!stopped) {
+            cutPower();
         }
+    }
+
+    public void stop() {
+        cutPower();
+    }
+
+    private void cutPower() {
+        lf_motor.setPower(0);
+        lb_motor.setPower(0);
+        rf_motor.setPower(0);
+        rb_motor.setPower(0);
+        lf_motor_power = 0;
+        lb_motor_power = 0;
+        rf_motor_power = 0;
+        rb_motor_power = 0;
+        stopped = true;
     }
 
 

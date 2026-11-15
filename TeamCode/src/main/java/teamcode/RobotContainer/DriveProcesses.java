@@ -1,138 +1,53 @@
 package teamcode.RobotContainer;
 
 import com.qualcomm.robotcore.hardware.Gamepad;
-import com.qualcomm.robotcore.hardware.HardwareMap;
-
-import teamcode.ComplexMath.Storage.PoseStorage;
 
 public class DriveProcesses {
 
-    Gamepad gamepad1;
-    Gamepad gamepad2;
-    //add fullIntakeConditionRPM as a velocity the flywheel must reach before the shooter runs (the pid target RPM)
-    int targetRPM = 2240;
+    private static final int TARGET_RPM = 2240;
+    private static final double RPM_TOLERANCE = 15;
+    private static final double TRIGGER_THRESHOLD = 0.1;
 
-    //KEEP TRACK OF THIS; I AM UNSURE IF CALLING THIS BOTH IN HERE AND IN THE OPMODE WILL CAUSE ISSUES (CALLING IT TWICE)
-    //IT SHOULD NOT BECAUSE THEY DO NOT CREATE AN INFINITE LOOP OF CALLING, BUT STILL
-    private Robot robot;
+    private final Gamepad gamepad1;
+    private final Gamepad gamepad2;
+    private final Robot robot;
 
-    public DriveProcesses(Robot robot, HardwareMap hardwareMap, Gamepad gamepad1, Gamepad gamepad2){
+    public DriveProcesses(Robot robot, Gamepad gamepad1, Gamepad gamepad2) {
         this.gamepad1 = gamepad1;
         this.gamepad2 = gamepad2;
         this.robot = robot;
-
     }
 
+    // Y, Start, Back, and Guide are unbound. Gamepad 2 cannot feed or shoot.
+    public void update(double posX, double posY, double headingRad, double dt) {
+        boolean shoot = gamepad1.left_trigger > TRIGGER_THRESHOLD;
+        boolean eject = gamepad1.right_bumper;
+        boolean collect = gamepad1.right_trigger > TRIGGER_THRESHOLD;
 
-
-
-    public void openGateIfWithinShootingTolerance(){
-        double RPM_Error = Math.abs(targetRPM - robot.shooter.getRPM());
-        if(RPM_Error < 15) {
-            robot.turretGate.moveGateToOpenPos();
-        } else {
-            if(robot.turretGate.getGatePos() != robot.turretGate.getCloseGatePos()){
+        if (shoot) {
+            robot.shooter.setBaseTargetRPM(TARGET_RPM);
+            if (Math.abs(TARGET_RPM - robot.shooter.getRPM()) < RPM_TOLERANCE) {
+                robot.turretGate.moveGateToOpenPos();
+                robot.intake.collect();
+            } else {
                 robot.turretGate.moveGateToClosePos();
+                robot.intake.stop();
             }
-        }
-    }
-
-
-
-
-
-    public void intakeDriveUpdate(){
-        boolean fullEjectCondition = gamepad2.y; //same control
-        boolean justFrontIntakeCondition = gamepad2.left_trigger > 0.1 && gamepad2.right_trigger < 0.1; //
-        boolean fullIntakeCondition = gamepad2.left_trigger > 0.1 && gamepad2.right_trigger > 0.1;
-        boolean justFrontEjectCondition = gamepad2.x;
-        boolean stopFullIntakeCondition = gamepad2.left_bumper; //
-        boolean justTransIntakeCondition = gamepad2.a; //same control
-        boolean justTransEjectCondition = gamepad2.b;
-
-        if(fullEjectCondition){
-            robot.intake.fullEject();
-        } else if(justFrontIntakeCondition){
-            robot.intake.justFrontIntake();
-            robot.intake.zeroTransfer();
-        } else if(justFrontEjectCondition){
-            robot.intake.justFrontEject();
-            robot.intake.zeroTransfer();
-        } else if(fullIntakeCondition){
-            robot.intake.fullIntake();
-            openGateIfWithinShootingTolerance();
-        }else if(stopFullIntakeCondition){
-            robot.intake.zeroIntake();
-            robot.intake.zeroTransfer();
-            //robot.shooter.zeroShoot(); //see if I can remove this
-            //add stop flywheel after consulting second driver
-        } else if (justTransIntakeCondition){
-            robot.intake.zeroIntake();
-            robot.intake.justTransIntake();
-            openGateIfWithinShootingTolerance();
-        } else if (justTransEjectCondition){
-            robot.intake.zeroIntake();
-            robot.intake.justTransEject();
-        } else if (gamepad2.atRest()){
-            robot.intake.zeroIntake();
-            robot.intake.zeroTransfer();
-            //robot.shooter.zeroShoot();
-
-
-        }
-
-    }
-
-
-
-    public void shooterDriveUpdate(){
-        final boolean startShooterCondition = (gamepad2.right_trigger > 0.3) && (gamepad2.left_trigger < 0.3);
-        final boolean zeroBaseShootCondition = gamepad2.right_bumper;
-        final boolean fireBallCondition = gamepad2.dpad_up;
-
-        //dont believe I can use commands here, should restrict to just methods
-
-        if(startShooterCondition){
-            robot.shooter.setBaseTargetRPM(targetRPM);
-            //add loadShooter when logic is finished
-        } else if(gamepad2.right_bumper){
+        } else if (eject) {
             robot.shooter.setBaseTargetRPM(0);
+            robot.turretGate.moveGateToClosePos();
+            robot.intake.eject();
+        } else if (collect) {
+            robot.shooter.setBaseTargetRPM(0);
+            robot.turretGate.moveGateToClosePos();
+            robot.intake.collect();
+        } else {
+            robot.shooter.setBaseTargetRPM(0);
+            robot.turretGate.moveGateToClosePos();
+            robot.intake.stop();
         }
 
-
-
+        robot.shooter.calculateShooterPID();
+        robot.turret.update(posX, posY, headingRad, gamepad2, dt);
     }
-
-
-
-    public void turretDriveUpdate(){
-        //add control
-        //find control for activating the turret
-        final boolean turretCondition = false;
-
-
-
-
-
-
-
-
-
-
-
-
-    }
-
-
-
-
-
-
-
-
-
-
-
-
-
 }

@@ -80,6 +80,7 @@ public class FarBlueBaseAuto extends LinearOpMode {
         Scheduler.reset();
         follower = Constants.create(hardwareMap);
         robot = new Robot(hardwareMap);
+        try {
         poseStorage = new PoseStorage();
         follower.setPose(startPos);
         poseStorage.setAlliance(PoseStorage.Alliance.BLUE);
@@ -101,8 +102,9 @@ public class FarBlueBaseAuto extends LinearOpMode {
             //may need to add something to zero the turret so it saves easier to teleOp
 
         }
-
-
+        } finally {
+            robot.stop();
+        }
     }
 
 

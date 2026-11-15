@@ -1,55 +1,30 @@
 package teamcode.Tests;
 
-import static com.qualcomm.robotcore.hardware.DcMotor.RunMode.RUN_WITHOUT_ENCODER;
-import static com.qualcomm.robotcore.hardware.DcMotor.RunMode.STOP_AND_RESET_ENCODER;
-import static com.qualcomm.robotcore.hardware.DcMotorSimple.Direction.REVERSE;
-
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
-import com.qualcomm.robotcore.hardware.DcMotorEx;
+import com.qualcomm.robotcore.util.ElapsedTime;
+
+import teamcode.Subsystems.Turret;
 
 @TeleOp
 public class BasicTurretMotorTest extends LinearOpMode {
 
-
-
-
-
-    public void runOpMode(){
-
-        DcMotorEx testMotor = hardwareMap.get(DcMotorEx.class, "turretPinion");
-
-
-
-        testMotor.setDirection(REVERSE);
-        testMotor.setMode(STOP_AND_RESET_ENCODER);
-        testMotor.setMode(RUN_WITHOUT_ENCODER);
-
-
+    public void runOpMode() {
+        Turret turret = new Turret(hardwareMap);
 
         waitForStart();
+        ElapsedTime loopTimer = new ElapsedTime();
+        while (opModeIsActive()) {
+            double dt = loopTimer.seconds();
+            loopTimer.reset();
+            double stick = gamepad1.right_stick_x;
+            if (Math.abs(stick) > Turret.stickDeadband) {
+                turret.slew(stick, dt);
+            }
 
-        while(opModeIsActive()){
-
-            testMotor.setPower(gamepad1.left_stick_y/4);
-
-
-            telemetry.addData("TurretPos", testMotor.getCurrentPosition());
-            telemetry.addData("TurretVel", testMotor.getVelocity());
-
+            telemetry.addData("commandedDeg", turret.getTurretHeading());
+            telemetry.addData("leftServo", turret.getLeftServoPosition());
             telemetry.update();
-
-
-
-
         }
-
-
     }
-
-
-
-
-
-
 }

@@ -99,6 +99,7 @@ public class NearBlueBaseAuto extends LinearOpMode {
         Scheduler.reset();
         follower = Constants.create(hardwareMap);
         robot = new Robot(hardwareMap);
+        try {
         follower.setPose(startPos);
         poseStorage = new PoseStorage();
         poseStorage.setAlliance(PoseStorage.Alliance.BLUE);
@@ -109,7 +110,7 @@ public class NearBlueBaseAuto extends LinearOpMode {
         while (opModeIsActive()) {
             follower.update();
             //robot.vision.scanForClusters();
-            //robot.turret.calculateTurretPIDPower(robot.vision.getCurrentCluster());
+            //robot.turret.update(follower.pose().x(), follower.pose().y(), follower.pose().heading(), gamepad2, 0);
             //robot.shooter.calculateShooterPID();
             Scheduler.execute();
 
@@ -119,7 +120,8 @@ public class NearBlueBaseAuto extends LinearOpMode {
             telemetry.addData("Robot Heading", follower.pose().heading());
 
         }
-
-
+        } finally {
+            robot.stop();
+        }
     }
 }

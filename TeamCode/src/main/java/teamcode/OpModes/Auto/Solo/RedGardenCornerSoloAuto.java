@@ -231,6 +231,7 @@ public class RedGardenCornerSoloAuto extends LinearOpMode {
         Scheduler.reset();
 
         robot = new Robot(hardwareMap);
+        try {
         poseStorage = new PoseStorage();
         subsystemCommands = new SubsystemCommands(hardwareMap, robot);
 
@@ -259,10 +260,9 @@ public class RedGardenCornerSoloAuto extends LinearOpMode {
 
 
         }
-
-
-
-
+        } finally {
+            robot.stop();
+        }
     }
 
 
