@@ -8,6 +8,10 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 
 import teamcode.pedro.Constants;
 
+/**
+ * Not used right now. Old helper for making a Pedro follower at a start pose;
+ * OpModes call Constants.create(hardwareMap) + setPose() directly instead.
+ */
 public class CustomFollower {
 
 

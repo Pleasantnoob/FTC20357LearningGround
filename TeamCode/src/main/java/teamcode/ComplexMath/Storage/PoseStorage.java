@@ -1,5 +1,11 @@
 package teamcode.ComplexMath.Storage;
 
+/**
+ * Carries the robot's position and alliance from auto into TeleOp.
+ * Everything is static, so every "new PoseStorage()" shares the same values, and they
+ * survive between OpModes as long as the robot controller app isn't restarted.
+ * Auto saves here every loop; TeleOp reads it at init to know where the robot is.
+ */
 public class PoseStorage {
 
     // volatile saves across threads, static keeps it constant across all classes

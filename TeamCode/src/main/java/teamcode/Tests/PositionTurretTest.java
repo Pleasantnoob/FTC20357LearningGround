@@ -13,6 +13,9 @@ import teamcode.RobotContainer.Robot;
 import teamcode.pedro.Constants;
 
 
+/**
+ * (Hidden) Turret auto-aim test from a fixed blue start pose (5, 138, 270). Drive around and watch it track.
+ */
 @Disabled
 @TeleOp
 public class PositionTurretTest extends LinearOpMode {

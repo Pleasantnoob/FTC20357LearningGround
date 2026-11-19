@@ -15,6 +15,10 @@ import teamcode.Constants.GameConstants;
 import teamcode.Subsystems.Turret;
 import teamcode.pedro.Constants;
 
+/**
+ * (Hidden) Older turret test: pick a start pose with gamepad 1 X/B/Y/A during init, then
+ * the dpad picks which cell to aim at. TuningStation covers this now.
+ */
 @Disabled
 @Config
 @TeleOp

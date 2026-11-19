@@ -5,6 +5,9 @@ import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 
 
+/**
+ * (Hidden) Shows the alliance/pose saved by AllianceTestAuto.
+ */
 @Disabled
 @TeleOp
 public class AllianceTestTeleOp extends LinearOpMode {

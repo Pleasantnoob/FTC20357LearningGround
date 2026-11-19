@@ -1,5 +1,9 @@
 package teamcode.Constants;
 
+/**
+ * Old copy of the cell (target) positions, still used by TurretTuning and RPMCalculatorTuning.
+ * The turret uses its own copies (Turret.redHighX etc.); change both if the targets move.
+ */
 public class GameConstants {
 
 

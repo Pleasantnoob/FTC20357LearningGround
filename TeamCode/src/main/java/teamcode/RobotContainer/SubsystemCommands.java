@@ -8,6 +8,12 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 
 import teamcode.ComplexMath.ShotRegression;
 
+/**
+ * Ivy commands for the autos. Each method wraps a subsystem action so it can be dropped
+ * into sequential()/parallel() groups next to path following.
+ *   instant(...)  runs once and finishes.
+ *   infinite(...) runs every loop until whatever group it's in ends it (use inside deadline()).
+ */
 public class SubsystemCommands {
 
 
@@ -73,6 +79,7 @@ public class SubsystemCommands {
         return instant(() -> robot.shooter.setBaseTargetRPM(0));
     }
 
+    /** Runs the flywheel controller every loop. Keep this in parallel for the whole auto. */
     public Command updateShooterPID(){
         return infinite(() -> robot.shooter.calculateShooterPID());
     }

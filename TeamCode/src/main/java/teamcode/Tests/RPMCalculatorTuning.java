@@ -15,6 +15,10 @@ import teamcode.RobotContainer.DriveProcesses;
 import teamcode.RobotContainer.Robot;
 import teamcode.pedro.Constants;
 
+/**
+ * (Hidden) Old shot-data helper: shows distance to a cell while you set RPM/hood from the dashboard.
+ * Start the robot at (82, 8, 90). TuningStation replaces this.
+ */
 @Disabled
 @Config
 @TeleOp

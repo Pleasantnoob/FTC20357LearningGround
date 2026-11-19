@@ -18,6 +18,9 @@ import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 
 public class Constants {
 
+    // Pedro Pathing setup. Pedro uses these for autos and for tracking position in TeleOp.
+
+    // Drive motor names and directions. Must match Drivetrain.java.
     public static MecanumConfig drivetrainConfig = new MecanumConfig(c -> {
         c.frontLeftName.set("lf_motor");
         c.frontRightName.set("rf_motor");
@@ -35,6 +38,9 @@ public class Constants {
 
 
 
+// Pinpoint odometry. Pod offsets are inches from the robot's center of rotation; that center
+// is what Pedro calls "the robot's position". These are from the OLD robot - rerun the Pinpoint
+// tuner (web page at 192.168.43.1:10158) on V2 and paste the new offsets/directions here.
 public static PinpointConfig localizerConfig = new PinpointConfig(c -> {
     c.name.set("pinpoint");
     c.podType.set(GoBildaPinpointDriver.GoBildaOdometryPods.goBILDA_4_BAR_POD);
@@ -51,6 +57,8 @@ public static PinpointConfig localizerConfig = new PinpointConfig(c -> {
 
 
 
+    // Path-following gains, max speeds and braking. All of this comes from the Foresight tuner.
+    // Old drivetrain numbers - rerun the tuner after the Pinpoint tuner on the new 500 rpm drive.
     public static ForesightConfig foresightConfig = new ForesightConfig(
             c -> {
                 Controller primaryTranslationalForward = Controller.proportional(0.2880526535156293);
@@ -77,6 +85,7 @@ public static PinpointConfig localizerConfig = new PinpointConfig(c -> {
             }
     );
 
+    /** Makes a follower from the configs above. Every OpMode that needs position calls this. */
     public static Follower create(HardwareMap h) {
         return new Follower(
                 new PinpointLocalizer(h, localizerConfig),

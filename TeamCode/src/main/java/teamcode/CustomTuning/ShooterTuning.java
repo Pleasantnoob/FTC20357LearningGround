@@ -13,6 +13,9 @@ import teamcode.RobotContainer.Robot;
 import teamcode.Subsystems.Shooter;
 
 
+/**
+ * (Hidden) Old flywheel PID tuner. Use TuningStation instead.
+ */
 @Disabled
 @Config
 @TeleOp

@@ -18,6 +18,12 @@ import teamcode.ComplexMath.Storage.PoseStorage;
 import teamcode.RobotContainer.Robot;
 import teamcode.pedro.Constants;
 
+/**
+ * Far Red base auto: drives from the start pose to the shooting spot, then parks.
+ * Shooting isn't written yet (see the "add shoot" spots below).
+ * The turret auto-aims the whole time and the position is saved for TeleOp.
+ * Start pose: (107, 10, 90) (Pedro field inches/degrees). Sets alliance = RED.
+ */
 @Autonomous
 public class FarRedBaseAuto extends LinearOpMode {
 

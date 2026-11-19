@@ -10,6 +10,12 @@ import com.qualcomm.robotcore.util.Range;
 
 
 
+/**
+ * Flywheel (one 6000 rpm motor, config name "leftShooterMotor").
+ * Set a target with setBaseTargetRPM(), then call calculateShooterPID() every loop.
+ * Control is feedforward (kS + kV * target, scaled for battery voltage) plus a P term.
+ * Gains are live-tunable in FTC Dashboard under "Shooter".
+ */
 @Config
 public class Shooter {
 

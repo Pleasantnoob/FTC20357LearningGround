@@ -17,6 +17,18 @@ import teamcode.Utility.DashboardField;
 import teamcode.pedro.Constants;
 
 
+/**
+ * Match TeleOp. Controls are listed at the top of RobotContainer/DriveProcesses.java.
+ *
+ * Each loop:
+ *   1. Pedro updates the robot's field position (from the Pinpoint).
+ *   2. DriveProcesses runs the turret, shooter, intake, gate and hood from the gamepads.
+ *   3. The sticks drive the robot (open loop, not through Pedro).
+ *   4. Telemetry goes to the Driver Station; graphs + field drawing go to FTC Dashboard.
+ *
+ * Starting position comes from PoseStorage (whatever auto ended at). If auto didn't run,
+ * park the robot at the reset spot below and press gamepad 2 Back.
+ */
 @Config
 @TeleOp
 public class MainDrive extends LinearOpMode {
@@ -59,6 +71,7 @@ public class MainDrive extends LinearOpMode {
                 double dt = loopTimer.seconds();
                 loopTimer.reset();
 
+                // drive sticks
                 double vertical = gamepad1.left_stick_y;
                 double turn = gamepad1.right_stick_x;
                 double strafe = gamepad1.left_stick_x;
@@ -71,14 +84,17 @@ public class MainDrive extends LinearOpMode {
                 }
                 lastBack = gamepad2.back;
 
+                // where are we on the field + how fast are we moving (shoot-on-the-move needs speed)
                 driveFollower.update();
                 Pose pose = driveFollower.pose();
                 robot.turret.setMeasuredVelocity(driveFollower.velocity().vx, driveFollower.velocity().vy, driveFollower.velocity().omega);
                 poseStorage.savePoseToStorage(pose.x(), pose.y(), pose.heading());
 
+                // turret / shooter / intake / gate / hood
                 driveProcesses.update(pose.x(), pose.y(), pose.heading(), dt);
                 robot.drivetrain.updateDriveMotorPowers(vertical, turn, strafe);
 
+                // FTC Dashboard: field view + graphs (one packet per loop so the field doesn't flicker)
                 TelemetryPacket packet = new TelemetryPacket();
                 DashboardField.draw(packet.fieldOverlay(), pose.x(), pose.y(), pose.heading(), robot.turret);
                 packet.put("rpm", robot.shooter.getRPM());

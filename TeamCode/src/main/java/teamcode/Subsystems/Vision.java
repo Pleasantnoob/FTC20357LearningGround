@@ -18,6 +18,12 @@ import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 import java.util.List;
 
 
+/**
+ * AprilTag camera ("Webcam 1"). Nothing opens the camera unless initVisionPortal() is called,
+ * so it costs nothing in OpModes that don't use it. Only ScanTest uses it right now.
+ * BioBuzz tags (IDs 30-45) are on the BOTTOM of each cell facing down, so the camera
+ * has to look up at the hive. Calibration is still the SDK default - see CAMERA CALIBRATION below.
+ */
 public class Vision {
 
     //UPDATE OUTLINE AFTER EVERY COMMIT

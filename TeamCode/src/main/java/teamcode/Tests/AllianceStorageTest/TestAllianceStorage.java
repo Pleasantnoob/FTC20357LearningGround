@@ -2,6 +2,9 @@ package teamcode.Tests.AllianceStorageTest;
 
 import com.pedropathing.math.Pose;
 
+/**
+ * Static storage used only by the AllianceTest OpModes. The real one is PoseStorage.
+ */
 public class TestAllianceStorage {
 
 

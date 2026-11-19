@@ -23,6 +23,12 @@ import teamcode.RobotContainer.Robot;
 import teamcode.RobotContainer.SubsystemCommands;
 import teamcode.pedro.Constants;
 
+/**
+ * Red solo auto from the garden corner, start (133.9, 107.1, 180).
+ * Drives to the first shooting spot and shoots the preloads, collects from the garden,
+ * then drives to the park-side spot and shoots again. Parking isn't written yet.
+ * The flywheel PID and turret aim run the whole time; position is saved for TeleOp.
+ */
 @Autonomous
 public class RedGardenCornerSoloAuto extends LinearOpMode {
 

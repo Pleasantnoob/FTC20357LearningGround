@@ -6,6 +6,10 @@ import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 
+/**
+ * (Hidden) Raw flywheel power test. Hold both triggers, Y/A step power up/down by 0.05, B stops.
+ * NOTE: uses the old config name "shooterMotor"; the robot uses "leftShooterMotor" now.
+ */
 @Disabled
 @TeleOp
 public class FlywheelSpinTest extends LinearOpMode {

@@ -7,6 +7,9 @@ import com.qualcomm.robotcore.util.ElapsedTime;
 
 import teamcode.Subsystems.Turret;
 
+/**
+ * (Hidden) Moves the turret by hand with gamepad 1 right stick. Quick check that both turret servos move together.
+ */
 @Disabled
 @TeleOp
 public class BasicTurretMotorTest extends LinearOpMode {

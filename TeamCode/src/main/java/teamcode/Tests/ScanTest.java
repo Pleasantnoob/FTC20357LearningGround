@@ -10,6 +10,9 @@ import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
 
 import teamcode.RobotContainer.Robot;
 
+/**
+ * (Hidden) Opens the camera and shows which AprilTag cluster it sees. Camera stream is on FTC Dashboard.
+ */
 @Disabled
 @TeleOp
 public class ScanTest extends LinearOpMode {

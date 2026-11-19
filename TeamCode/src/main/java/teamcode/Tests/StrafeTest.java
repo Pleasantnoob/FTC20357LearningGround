@@ -6,6 +6,9 @@ import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 
 import teamcode.RobotContainer.Robot;
 
+/**
+ * (Hidden) Drives with the TeleOp mix and shows each wheel's power, for checking strafing.
+ */
 @Disabled
 @TeleOp
 public class StrafeTest extends LinearOpMode {

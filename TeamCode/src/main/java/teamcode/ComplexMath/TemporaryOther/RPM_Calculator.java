@@ -4,6 +4,10 @@ import static org.firstinspires.ftc.robotcore.external.BlocksOpModeCompanion.har
 
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 
+/**
+ * Not used. Early placeholder for the RPM/hood regression; ShotRegression does this now.
+ * (Its hardwareMap import is the Blocks one, so it wouldn't work if called.)
+ */
 public class RPM_Calculator {
 
     DcMotorEx flywheelMotor;

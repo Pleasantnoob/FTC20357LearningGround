@@ -11,6 +11,10 @@ import teamcode.Subsystems.Turret;
 import teamcode.Subsystems.Drivetrain;
 import teamcode.Subsystems.Vision;
 
+/**
+ * Builds every subsystem in one place so OpModes can just do "new Robot(hardwareMap)"
+ * and use robot.turret, robot.shooter, etc. If any config name is wrong, init crashes here.
+ */
 public class Robot {
 
 
@@ -52,6 +56,7 @@ public class Robot {
 
     }
 
+    /** Kills drive, intake and flywheel. Every OpMode calls this in its finally block. */
     public void stop() {
         drivetrain.stop();
         intake.forceStop();
