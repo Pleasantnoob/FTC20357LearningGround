@@ -3,10 +3,43 @@
 Robot code for the BioBuzz season. Branch `BIOBUZZ2627`. Everything we write lives in `TeamCode/src/main/java/teamcode/`; `FtcRobotController/` is the stock FTC SDK, so don't edit it.
 
 ## Build
+Check it compiles (no robot needed):
 ```bash
 ./gradlew :TeamCode:compileDebugJavaWithJavac
 ```
-Deploy to the Control Hub from Android Studio as usual. On Windows, clone with `git config core.longpaths true` or the checkout fails.
+On Windows, clone with `git config core.longpaths true` or the checkout fails.
+
+## Git
+- Work on `BIOBUZZ2627`. Commit with a short summary line, then a few plain sentences on what changed and why.
+- Compile before every commit.
+- Ask before pushing. Push with `git push origin BIOBUZZ2627`.
+
+## Getting code onto the robot (ADB)
+ADB (Android Debug Bridge) is how the laptop talks to the Control Hub. It comes with Android Studio, in `<Android SDK>/platform-tools/adb` (the SDK path is in `local.properties`). Add that folder to PATH or use the full path.
+
+1. Connect the laptop to the robot's Wi-Fi (Control Hub network), or plug in USB-C.
+2. Connect ADB (Wi-Fi only; USB connects by itself):
+   ```bash
+   adb connect 192.168.43.1:5555
+   adb devices
+   ```
+   `adb devices` should list the hub. If it says "offline" or "unauthorized", run `adb disconnect` and connect again.
+3. Build and install. Either press Run in Android Studio with the TeamCode config, or:
+   ```bash
+   ./gradlew :TeamCode:installDebug
+   ```
+   The Robot Controller app restarts by itself after the install. If it doesn't:
+   ```bash
+   adb shell am force-stop com.qualcomm.ftcrobotcontroller
+   adb shell monkey -p com.qualcomm.ftcrobotcontroller 1
+   ```
+4. Pick the OpMode on the Driver Station as usual.
+
+Useful while debugging:
+- Live log of the robot app: `adb logcat -s RobotCore`. Crashes show up as `FATAL EXCEPTION` or `AndroidRuntime`, so grep for those.
+- Pull the full log: `adb pull /sdcard/robotControllerLog.txt`
+- Web pages on the robot Wi-Fi: FTC Dashboard at `192.168.43.1:8080/dash`, Pedro tuner at `192.168.43.1:10158`, robot config / manage page at `192.168.43.1:8080`.
+- If the code installed but an OpMode is missing from the list, check it isn't `@Disabled` and has `@TeleOp` / `@Autonomous`.
 
 ## Stack
 - FTC SDK 12.0. Pedro Pathing 3.0.1 (core, revhub, tuning) plus Ivy commands for the autos.
@@ -75,4 +108,4 @@ The turret is two Axon MAX servos, 1:1. Both servo gears drive one center gear, 
 - Comments: short and plain. Say what a thing does and why, and mark placeholders clearly.
 - Check that it compiles before committing.
 - Ask before pushing.
-- Values from other teams (e.g. FTC 23511's DECODE code) are reference only. Their ball was heavier.
+- Keep this file and code comments free of other teams' names and private info (emails, passwords, keys).
