@@ -208,6 +208,7 @@ public class TuningStation extends LinearOpMode {
                 packet.put("target rpm", robot.shooter.getTargetRPM());
                 packet.put("rpm error", robot.shooter.getTargetRPM() - rpmNow);
                 packet.put("flywheel power", robot.shooter.getLastPower());
+                packet.put("battery V", robot.shooter.getBatteryVoltage());
                 packet.put("distance to target", distance);
                 packet.put("hood pos", robot.turretHood.getTargetPos());
                 packet.put("turret cmd deg", robot.turret.getTurretHeading());

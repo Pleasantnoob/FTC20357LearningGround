@@ -98,6 +98,8 @@ public class Turret {
      * Has no effect while the robot is standing still.
      */
     public static boolean SHOOT_ON_THE_MOVE = true;
+    // PLACEHOLDERS below are from FTC 23511's DECODE robot (much heavier ball). The BioBuzz ball is
+    // lighter, so expect a shorter flight time - measure on our robot before trusting them.
     /** Seconds from the gate opening until the ball leaves the flywheel. PLACEHOLDER - measure it. */
     public static double FEED_TIME_SEC = 0.15;
     /** Ball flight time (s) = TOF_A + TOF_B * distanceInches. PLACEHOLDER - fit it in Desmos. */

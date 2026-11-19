@@ -5,6 +5,7 @@ import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.HardwareMap;
+import com.qualcomm.robotcore.hardware.VoltageSensor;
 import com.qualcomm.robotcore.util.Range;
 
 
@@ -31,9 +32,19 @@ public class Shooter {
         // Feedforward was tuned when the reported RPM was 4x too small, then the
         // target moved 560 -> 2240 without scaling the gains. 0.0002*2240+0.07
         // is about 0.52, which is the old physical power at the corrected RPM.
+        // power = (kS + kV * targetRPM) * (NOMINAL_VOLTAGE / battery) + kP * (targetRPM - rpm)
+        //   kS = power to overcome friction, kV = power per RPM. Together they guess the power
+        //   needed BEFORE any error appears; kP only cleans up what's left (mostly shot recovery).
+        // Old-robot values - retune on the V2 flywheel (TuningStation).
         public static double kV = 0.0002;
         public static double kS = 0.07;
         public static double kP = 0.00125;
+
+        /** Scales the feedforward by NOMINAL_VOLTAGE / battery so the RPM doesn't sag as the battery drains. */
+        public static boolean VOLTAGE_COMP = true;
+        /** Tune kS / kV with VOLTAGE_COMP on; they're then "power at this voltage". */
+        public static double NOMINAL_VOLTAGE = 12.5;
+        public static double VOLTAGE_READ_MS = 200;
 
     //Objects
         //put tuning constants in class parameters when I make the PIDController class
@@ -41,6 +52,9 @@ public class Shooter {
         //private DcMotorEx rightShooterMotor;
         public int baseTargetRPM = 0;
         private double lastPower = 0;
+        private final VoltageSensor batterySensor;
+        private double batteryVolts = 12.5;
+        private long lastVoltageReadMs = 0;
 
     public Shooter(HardwareMap hardwareMap) {
             shooterMotor = hardwareMap.get(DcMotorEx.class, "leftShooterMotor");
@@ -51,7 +65,21 @@ public class Shooter {
 
             shooterMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
             shooterMotor.setPower(0);
+
+            batterySensor = hardwareMap.voltageSensor.iterator().hasNext()
+                    ? hardwareMap.voltageSensor.iterator().next() : null;
     }
+
+        /** Battery voltage, re-read every VOLTAGE_READ_MS (each read is a hub call, so not every loop). */
+        public double getBatteryVoltage(){
+            long now = System.currentTimeMillis();
+            if (batterySensor != null && now - lastVoltageReadMs >= VOLTAGE_READ_MS) {
+                double v = batterySensor.getVoltage();
+                if (v > 6) batteryVolts = v; // ignore bad / brownout readings
+                lastVoltageReadMs = now;
+            }
+            return batteryVolts;
+        }
 
 
 
@@ -100,6 +128,9 @@ public class Shooter {
             }
 
             double feedForward = (kV * baseTargetRPM) + kS;
+            if (VOLTAGE_COMP) {
+                feedForward *= NOMINAL_VOLTAGE / getBatteryVoltage();
+            }
             double error = baseTargetRPM - getRPM();
             double feedBack = error * kP;
             setShooterMotorPowers(Range.clip(feedForward + feedBack, -1, 1));

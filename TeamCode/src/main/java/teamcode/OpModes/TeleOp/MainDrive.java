@@ -84,6 +84,7 @@ public class MainDrive extends LinearOpMode {
                 packet.put("rpm", robot.shooter.getRPM());
                 packet.put("target rpm", robot.shooter.getTargetRPM());
                 packet.put("flywheel power", robot.shooter.getLastPower());
+                packet.put("battery V", robot.shooter.getBatteryVoltage());
                 packet.put("distance to target", robot.turret.getDistanceToTarget());
                 packet.put("hood pos", robot.turretHood.getTargetPos());
                 packet.put("turret cmd deg", robot.turret.getTurretHeading());
