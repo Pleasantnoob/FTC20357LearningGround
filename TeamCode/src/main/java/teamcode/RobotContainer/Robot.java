@@ -37,13 +37,30 @@ public class Robot {
 
 
 
+    /**
+     * Match / auto robot. Anything not marked tuned in Tuned stays switched off: its servos
+     * stay limp and the flywheel stays at 0.
+     */
     public Robot(HardwareMap hardwareMap) {
+        this(hardwareMap, Tuned.TURRET);
+        turretGate.setEnabled(Tuned.GATE);
+        matchLoader.setEnabled(Tuned.MATCH_LOADER);
+        turretHood.setEnabled(Tuned.HOOD);
+        shooter.setEnabled(Tuned.FLYWHEEL);
+    }
+
+    /**
+     * Everything enabled except the turret servos' signal (TuningStation decides what runs).
+     * @param turretHoldsCenter false = turret servos stay limp at init; nothing writes to them
+     *                          until setPowered() turns them on.
+     */
+    public Robot(HardwareMap hardwareMap, boolean turretHoldsCenter) {
 
         drivetrain = new Drivetrain(hardwareMap);
         vision = new Vision(hardwareMap);
         intake = new Intake(hardwareMap);
         shooter = new Shooter(hardwareMap);
-        turret = new Turret(hardwareMap);
+        turret = new Turret(hardwareMap, turretHoldsCenter);
 
         /*
         Eventually create discrete Subsystems and Microsystems 'hub' classes to keep the objects more organized. I

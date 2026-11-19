@@ -16,6 +16,11 @@ public class MatchLoader {
     private boolean deployed = false;
     private double lastCommand = Double.NaN;
 
+    // false = never written, servo stays limp (see RobotContainer/Tuned)
+    private boolean enabled = true;
+    public void setEnabled(boolean on) { enabled = on; }
+    public boolean isEnabled() { return enabled; }
+
     public MatchLoader(HardwareMap hardwareMap) {
         matchLoader = hardwareMap.get(Servo.class, "matchLoader");
     }
@@ -30,7 +35,7 @@ public class MatchLoader {
     public void raiseMatchLoader() { stow(); }
 
     private void command(double position) {
-        if (position == lastCommand) return;
+        if (!enabled || position == lastCommand) return;
         matchLoader.setPosition(position);
         lastCommand = position;
     }

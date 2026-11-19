@@ -96,8 +96,13 @@ public class Shooter {
 
         }
 
+        // false = flywheel always gets 0 power (see RobotContainer/Tuned)
+        private boolean enabled = true;
+        public void setEnabled(boolean on) { enabled = on; if (!on) emergencyShooterStop(); }
+        public boolean isEnabled() { return enabled; }
+
         public void setShooterMotorPowers(double power){
-            double clipped = Range.clip(power, -1, 1);
+            double clipped = enabled ? Range.clip(power, -1, 1) : 0;
             if (clipped == lastPower) {
                 return;
             }

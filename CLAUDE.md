@@ -43,6 +43,9 @@ Deploy to the Control Hub from Android Studio as usual. On Windows, clone with `
 
 The turret is two Axon MAX servos, 1:1. Both servo gears drive one center gear, so both servos spin the same way and `reverseRight = false`. Setting it to `true` makes them fight. Travel is ±175°. The turret pivot is 15.021 mm forward of the robot center (from CAD).
 
+## Tuned switches (`RobotContainer/Tuned.java`)
+`TURRET`, `HOOD`, `GATE`, `MATCH_LOADER`, `FLYWHEEL` are all `false` until the real values are in the code. While one is false, MainDrive and the autos leave that mechanism off: its servos stay limp, the flywheel gets 0 power. TuningStation ignores them and has its own on/off switches (everything starts off there too; the turret has `TURRET_MODE` with LEFT_ONLY / RIGHT_ONLY so one servo can be tuned while the other is limp). Only flip a switch after the user gives the tuned values.
+
 ## How the main pieces work
 - **Turret:** jumps straight to the target, leads the target by `latencySec`, and aims from the pivot point. There's no aim dead zone. `isOnTarget()` gates shooting.
 - **Shoot on the move:** aims at a "virtual goal" shifted by robot velocity × (feed time + flight time). Toggle with `Turret.SHOOT_ON_THE_MOVE` or gamepad 2 right bumper. `FEED_TIME_SEC` and `TOF_A`/`TOF_B` are placeholders.

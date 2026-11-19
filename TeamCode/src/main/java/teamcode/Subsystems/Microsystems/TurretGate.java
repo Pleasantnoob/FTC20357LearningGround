@@ -15,6 +15,11 @@ public class TurretGate {
     private final Servo turretGate;
     private double lastCommand = Double.NaN;
 
+    // false = never written, servo stays limp (see RobotContainer/Tuned)
+    private boolean enabled = true;
+    public void setEnabled(boolean on) { enabled = on; }
+    public boolean isEnabled() { return enabled; }
+
     public TurretGate(HardwareMap hardwareMap) {
         turretGate = hardwareMap.get(Servo.class, "turretGate");
     }
@@ -28,7 +33,7 @@ public class TurretGate {
     public boolean isOpen() { return lastCommand == openGatePos; }
 
     private void command(double position) {
-        if (position == lastCommand) return;
+        if (!enabled || position == lastCommand) return;
         turretGate.setPosition(position);
         lastCommand = position;
     }

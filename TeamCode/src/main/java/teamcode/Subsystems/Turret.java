@@ -49,7 +49,7 @@ public class Turret {
     public static double centerPos = 0.5;
     /**
      * V2: both servo gears mesh the same center gear, so both servos spin the SAME way -> false.
-     * WRONG VALUE = THE SERVOS FIGHT. Check with one servo unplugged first.
+     * WRONG VALUE = THE SERVOS FIGHT. Check each servo alone first (TuningStation LEFT_ONLY / RIGHT_ONLY).
      */
     public static boolean reverseRight = false;
     /** Flip if positive degrees turn the turret clockwise (seen from above). Positive should be CCW / left. */
@@ -58,6 +58,13 @@ public class Turret {
     public static boolean useWidePwm = true;
     public static double pwmLowUs = 500;
     public static double pwmHighUs = 2500;
+    /**
+     * Added to the RIGHT servo only, in servo units. Two servos on one gear never line up perfectly
+     * (the spline teeth are coarse), so they push against each other a little. Tune this in
+     * TuningStation (TURRET_MODE = BOTH_RAW) until the "hub current" graph is lowest and the servos
+     * stop buzzing.
+     */
+    public static double rightOffsetPos = 0;
 
     // ---------------- Turret pivot in robot frame (inches, +forward, +left) ----------------
     public static double pivotForwardIn = 15.021 / 25.4; // CAD: 15.021 mm toward the front (0.591 in)
@@ -130,6 +137,8 @@ public class Turret {
     private double trimDeg = 0;
     private double lastDistance = 0;
     private AimMode aimMode = AimMode.IDLE;
+    // false = that servo's PWM is off, so it goes limp and nothing in here will write to it
+    private boolean leftPowered = true, rightPowered = true;
 
     // velocity estimate
     private long lastNanos = 0;
@@ -141,6 +150,15 @@ public class Turret {
     private double virtualX = 72, virtualY = 72;
 
     public Turret(HardwareMap hardwareMap) {
+        this(hardwareMap, true);
+    }
+
+    /**
+     * @param holdCenter true = power both servos and hold center from init (matches, autos).
+     *                   false = leave both servos limp until something commands them (TuningStation),
+     *                   so an untuned turret doesn't fight itself the moment you hit init.
+     */
+    public Turret(HardwareMap hardwareMap, boolean holdCenter) {
         leftServo = hardwareMap.get(Servo.class, LEFT_SERVO_NAME);
         rightServo = hardwareMap.get(Servo.class, RIGHT_SERVO_NAME);
         encoder = hardwareMap.tryGet(AnalogInput.class, ENCODER_NAME);
@@ -154,10 +172,47 @@ public class Turret {
             if (rightServo instanceof ServoImplEx) ((ServoImplEx) rightServo).setPwmRange(range);
         }
 
-        // Hold center from init so the turret isn't limp. Both servos get the same command
-        // in the same call, so they can't drift apart.
-        commandDegrees(0);
+        if (holdCenter) {
+            // Hold center from init so the turret isn't limp. Both servos get the same command
+            // in the same call, so they can't drift apart.
+            commandDegrees(0);
+        } else {
+            setPowered(false, false);
+        }
         estimatedDeg = 0;
+    }
+
+    /**
+     * Turn each servo's signal on or off. An Axon with no signal goes limp, so with one servo off
+     * the other can turn the turret without a fight. Writes to an unpowered servo are skipped,
+     * because setPosition() would switch its signal back on.
+     */
+    public void setPowered(boolean left, boolean right) {
+        if (left != leftPowered || right != rightPowered) lastWrittenPos = Double.NaN; // rewrite on next command
+        leftPowered = left;
+        rightPowered = right;
+        setPwm(leftServo, left);
+        setPwm(rightServo, right);
+    }
+
+    private static void setPwm(Servo servo, boolean on) {
+        if (!(servo instanceof ServoImplEx)) return;
+        if (on) ((ServoImplEx) servo).setPwmEnable();
+        else ((ServoImplEx) servo).setPwmDisable();
+    }
+
+    public boolean isLeftPowered() { return leftPowered; }
+    public boolean isRightPowered() { return rightPowered; }
+
+    /**
+     * Tuning only: send raw positions straight to the servos (no angle math, no rightOffsetPos).
+     * Unpowered servos are skipped. reverseRight still applies to the right servo.
+     */
+    public void writeRaw(double leftPos, double rightPos) {
+        if (leftPowered) leftServo.setPosition(Range.clip(leftPos, 0, 1));
+        if (rightPowered) rightServo.setPosition(Range.clip(rightPos, 0, 1));
+        lastWrittenPos = Double.NaN; // so the next normal command is always sent
+        aimMode = AimMode.IDLE;
     }
 
     // =====================================================================================
@@ -390,9 +445,10 @@ public class Turret {
     private void writeServos() {
         double pos = servoPosition(commandedDeg);
         if (Double.isNaN(lastWrittenPos) || Math.abs(pos - lastWrittenPos) > writeDeadbandPos) {
-            // Direction.REVERSE on the right servo does the mirroring, so both get the same number.
-            leftServo.setPosition(pos);
-            rightServo.setPosition(pos);
+            // Direction.REVERSE on the right servo does the mirroring, so both get the same number
+            // (plus the small offset that lines the two servos up).
+            if (leftPowered) leftServo.setPosition(pos);
+            if (rightPowered) rightServo.setPosition(Range.clip(pos + rightOffsetPos, 0.0, 1.0));
             lastWrittenPos = pos;
         }
     }

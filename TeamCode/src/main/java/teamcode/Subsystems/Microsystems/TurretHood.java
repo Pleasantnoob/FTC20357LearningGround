@@ -23,6 +23,11 @@ public class TurretHood {
     private double offset = 0;
     private double lastCommand = Double.NaN;
 
+    // false = never written, servo stays limp (see RobotContainer/Tuned)
+    private boolean enabled = true;
+    public void setEnabled(boolean on) { enabled = on; }
+    public boolean isEnabled() { return enabled; }
+
     public TurretHood(HardwareMap hardwareMap) {
         turretHood = hardwareMap.get(Servo.class, "turretHood");
     }
@@ -55,7 +60,7 @@ public class TurretHood {
     }
 
     private void write(double position) {
-        if (position == lastCommand) return;
+        if (!enabled || position == lastCommand) return;
         turretHood.setPosition(position);
         lastCommand = position;
     }

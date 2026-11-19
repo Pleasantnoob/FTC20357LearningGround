@@ -13,6 +13,7 @@ import com.qualcomm.robotcore.util.ElapsedTime;
 import teamcode.ComplexMath.Storage.PoseStorage;
 import teamcode.RobotContainer.DriveProcesses;
 import teamcode.RobotContainer.Robot;
+import teamcode.RobotContainer.Tuned;
 import teamcode.Utility.DashboardField;
 import teamcode.pedro.Constants;
 
@@ -117,6 +118,10 @@ public class MainDrive extends LinearOpMode {
                 packet.put("vel y pose-diff", robot.turret.getDiffVelY());
                 dashboard.sendTelemetryPacket(packet);
 
+                // anything not tuned yet is switched off (RobotContainer/Tuned)
+                telemetry.addData("NOT TUNED (off)", "%s%s%s%s%s",
+                        Tuned.TURRET ? "" : "turret ", Tuned.HOOD ? "" : "hood ", Tuned.GATE ? "" : "gate ",
+                        Tuned.MATCH_LOADER ? "" : "loader ", Tuned.FLYWHEEL ? "" : "flywheel");
                 telemetry.addData("lf_motor_power", robot.drivetrain.getLFMotorPower());
                 telemetry.addData("lb_motor_power", robot.drivetrain.getLBMotorPower());
                 telemetry.addData("rf_motor_power", robot.drivetrain.getRFMotorPower());
