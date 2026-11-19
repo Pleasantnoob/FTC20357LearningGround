@@ -47,6 +47,14 @@ public class DashboardField {
         drawTarget(c, Turret.blueHighX, Turret.blueHighY, "#4488ff", turret);
         drawTarget(c, Turret.blueLowX, Turret.blueLowY, "#4488ff", turret);
 
+        // virtual goal (shoot on the move): purple X where the turret is really aiming
+        if (turret.isShootOnTheMove()) {
+            double[] v = p(turret.getVirtualTargetX(), turret.getVirtualTargetY());
+            c.setStroke("#AA00FF").setStrokeWidth(2);
+            c.strokeLine(v[0] - 2.5, v[1] - 2.5, v[0] + 2.5, v[1] + 2.5);
+            c.strokeLine(v[0] - 2.5, v[1] + 2.5, v[0] + 2.5, v[1] - 2.5);
+        }
+
         // robot body + heading
         double[] r = p(x, y);
         c.setStroke("#3F51B5").setStrokeWidth(2);

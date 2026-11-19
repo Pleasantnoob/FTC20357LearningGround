@@ -19,6 +19,7 @@ import teamcode.ComplexMath.Storage.PoseStorage;
  *   Dpad up / down .... hood up / down
  *   X ................. alliance = BLUE         Y ...... alliance = RED
  *   Left bumper ....... reset turret trim + hood to default
+ *   Right bumper ...... toggle shoot-on-the-move ON / OFF
  *   Back / Share ...... reset robot position (handled in MainDrive)
  */
 public class DriveProcesses {
@@ -36,7 +37,7 @@ public class DriveProcesses {
     private boolean volleyLatched = false;
 
     // previous button states for press (edge) detection
-    private boolean p1LB, p2DL, p2DR, p2DU, p2DD, p2X, p2Y, p2LB;
+    private boolean p1LB, p2DL, p2DR, p2DU, p2DD, p2X, p2Y, p2LB, p2RB;
 
     public DriveProcesses(Robot robot, Gamepad gamepad1, Gamepad gamepad2) {
         this.gamepad1 = gamepad1;
@@ -112,7 +113,9 @@ public class DriveProcesses {
         p2DD = gamepad2.dpad_down;
         p2X = gamepad2.x;
         p2Y = gamepad2.y;
+        if (pressed(gamepad2.right_bumper, p2RB)) robot.turret.toggleShootOnTheMove();
         p2LB = gamepad2.left_bumper;
+        p2RB = gamepad2.right_bumper;
     }
 
     private static boolean pressed(boolean now, boolean before) {

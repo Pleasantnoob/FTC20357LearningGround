@@ -91,6 +91,22 @@ public class Turret {
     // ---------------- Trim (gamepad 2 fine adjust) ----------------
     public static double trimStepDeg = 1.0;
 
+    // ---------------- Shoot on the move (virtual goal) ----------------
+    /**
+     * true = aim at a "virtual goal" shifted against the robot's motion, so the ball's
+     * inherited velocity carries it into the real goal. Toggle on gamepad 2 right bumper.
+     * Has no effect while the robot is standing still.
+     */
+    public static boolean SHOOT_ON_THE_MOVE = true;
+    /** Seconds from the gate opening until the ball leaves the flywheel. PLACEHOLDER - measure it. */
+    public static double FEED_TIME_SEC = 0.15;
+    /** Ball flight time (s) = TOF_A + TOF_B * distanceInches. PLACEHOLDER - fit it in Desmos. */
+    public static double TOF_A = 0.35;
+    public static double TOF_B = 0.0026;
+    public static int SOTM_ITERATIONS = 5;
+    /** true = robot velocity from the Pinpoint (follower.velocity()); false = worked out from pose changes. */
+    public static boolean USE_PINPOINT_VELOCITY = true;
+
     // ---------------- Manual override ----------------
     public static double slewDegPerSec = 200;
     public static double stickDeadband = 0.08;
@@ -117,7 +133,10 @@ public class Turret {
     private long lastNanos = 0;
     private double lastX, lastY, lastH;
     private boolean havePose = false;
-    private double vx = 0, vy = 0, omega = 0;
+    private double vx = 0, vy = 0, omega = 0;          // from pose differences
+    private double measVx, measVy, measOmega;           // from the Pinpoint
+    private boolean haveMeasured = false;
+    private double virtualX = 72, virtualY = 72;
 
     public Turret(HardwareMap hardwareMap) {
         leftServo = hardwareMap.get(Servo.class, LEFT_SERVO_NAME);
@@ -147,6 +166,8 @@ public class Turret {
         // No alliance set (auto didn't run) -> aims as RED, see updateTurretTarget.
         updateTurretTarget(posY);
         lastDistance = distanceFromPivot(posX, posY, robotHeadingRad);
+        virtualX = turretTargetX;
+        virtualY = turretTargetY;
 
         double stick = overridePad.right_stick_x;
         if (Math.abs(stick) > stickDeadband) {
@@ -211,12 +232,39 @@ public class Turret {
     // Aiming math
     // =====================================================================================
     private void aimAtTarget(double posX, double posY, double headingRad) {
-        // predict where the robot will be when the turret gets there
-        double px = posX + vx * latencySec;
-        double py = posY + vy * latencySec;
-        double ph = headingRad + omega * latencySec;
+        double fvx = getVelX(), fvy = getVelY(), fw = getOmega();
 
-        double desired = robotRelativeDegreesRaw(px, py, ph) + trimDeg;
+        // 1. predict where the robot will be when the turret gets there
+        double px = posX + fvx * latencySec;
+        double py = posY + fvy * latencySec;
+        double ph = headingRad + fw * latencySec;
+
+        // 2. turret pivot (field) and its velocity: robot velocity + spin around the robot center
+        double cos = Math.cos(ph), sin = Math.sin(ph);
+        double offX = cos * pivotForwardIn - sin * pivotLeftIn;
+        double offY = sin * pivotForwardIn + cos * pivotLeftIn;
+        double pivotX = px + offX, pivotY = py + offY;
+        double baseVx = fvx - fw * offY;
+        double baseVy = fvy + fw * offX;
+
+        // 3. virtual goal: shift the target against our motion by (feed time + flight time).
+        //    Flight time depends on distance, which depends on the shift, so iterate.
+        double gx = turretTargetX, gy = turretTargetY;
+        double dist = Math.hypot(gx - pivotX, gy - pivotY);
+        if (SHOOT_ON_THE_MOVE) {
+            for (int i = 0; i < SOTM_ITERATIONS; i++) {
+                double t = FEED_TIME_SEC + Math.max(0, TOF_A + TOF_B * dist);
+                gx = turretTargetX - baseVx * t;
+                gy = turretTargetY - baseVy * t;
+                dist = Math.hypot(gx - pivotX, gy - pivotY);
+            }
+        }
+        virtualX = gx;
+        virtualY = gy;
+        lastDistance = dist; // effective distance -> ShotRegression picks RPM/hood for it
+
+        double bearing = Math.atan2(gy - pivotY, gx - pivotX);
+        double desired = Math.toDegrees(normalizeRad(bearing - ph)) + trimDeg;
         double limit = Math.abs(travelLimitDeg);
         reachable = Math.abs(desired) <= limit;
         commandDegrees(desired);
@@ -239,6 +287,27 @@ public class Turret {
         double bearingRad = Math.atan2(turretTargetY - pivotY, turretTargetX - pivotX);
         return Math.toDegrees(normalizeRad(bearingRad - headingRad));
     }
+
+    /** Pinpoint velocity from follower.velocity(): field inches/s and rad/s. Call every loop before aiming. */
+    public void setMeasuredVelocity(double vxField, double vyField, double omegaRadPerSec) {
+        measVx = vxField;
+        measVy = vyField;
+        measOmega = omegaRadPerSec;
+        haveMeasured = true;
+    }
+
+    public double getVelX() { return USE_PINPOINT_VELOCITY && haveMeasured ? measVx : vx; }
+    public double getVelY() { return USE_PINPOINT_VELOCITY && haveMeasured ? measVy : vy; }
+    public double getOmega() { return USE_PINPOINT_VELOCITY && haveMeasured ? measOmega : omega; }
+    /** Pose-difference velocity, for comparing against the Pinpoint on the dashboard. */
+    public double getDiffVelX() { return vx; }
+    public double getDiffVelY() { return vy; }
+    public double getDiffOmega() { return omega; }
+
+    public void toggleShootOnTheMove() { SHOOT_ON_THE_MOVE = !SHOOT_ON_THE_MOVE; }
+    public boolean isShootOnTheMove() { return SHOOT_ON_THE_MOVE; }
+    public double getVirtualTargetX() { return virtualX; }
+    public double getVirtualTargetY() { return virtualY; }
 
     /** Inches from the turret pivot to the current target. */
     public double distanceFromPivot(double posX, double posY, double headingRad) {

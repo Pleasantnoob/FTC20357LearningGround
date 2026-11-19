@@ -116,6 +116,7 @@ public class NearRedBaseAuto extends LinearOpMode {
             while (opModeIsActive()) {
                 follower.update();
                 poseStorage.savePoseToStorage(follower.pose().x(), follower.pose().y(), follower.pose().heading());
+                robot.turret.setMeasuredVelocity(follower.velocity().vx, follower.velocity().vy, follower.velocity().omega);
                 robot.turret.autoAim(follower.pose().x(), follower.pose().y(), follower.pose().heading());
                 DashboardField.send(follower.pose().x(), follower.pose().y(), follower.pose().heading(), robot.turret);
                 robot.shooter.setBaseTargetRPM((int) Math.round(ShotRegression.rpmFor(robot.turret.getDistanceToTarget())));

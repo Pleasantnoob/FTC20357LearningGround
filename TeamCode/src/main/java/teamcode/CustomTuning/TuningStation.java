@@ -46,7 +46,12 @@ import teamcode.Utility.DashboardField;
  *
  * GAMEPAD 1: sticks drive | LT shoot (opens gate + feeds, no RPM check) | RT collect | RB eject
  *            LB toggle match loader
- * GAMEPAD 2: same turret / trim / alliance / pose-reset buttons as MainDrive
+ * GAMEPAD 2: same turret / trim / alliance / pose-reset buttons as MainDrive,
+ *            right bumper toggles shoot-on-the-move
+ *
+ * SHOOT ON THE MOVE (group "Turret": SHOOT_ON_THE_MOVE, FEED_TIME_SEC, TOF_A, TOF_B)
+ *   Graph "vel x pinpoint" vs "vel x pose-diff" while driving: they should match. If the Pinpoint
+ *   line looks wrong (flipped / robot-relative), set USE_PINPOINT_VELOCITY = false.
  */
 @Config
 @TeleOp(name = "TuningStation", group = "Tuning")
@@ -72,7 +77,7 @@ public class TuningStation extends LinearOpMode {
     public static double RAW_SERVO_POS = 0.5;
 
     private final PoseStorage poseStorage = new PoseStorage();
-    private boolean pLB, p2Back, p2X, p2Y, p2DL, p2DR, p2LB;
+    private boolean pLB, p2Back, p2X, p2Y, p2DL, p2DR, p2LB, p2RB;
 
     @Override
     public void runOpMode() {
@@ -104,6 +109,8 @@ public class TuningStation extends LinearOpMode {
                 if (pressed(gamepad2.dpad_left, p2DL)) robot.turret.nudgeTrim(-1);
                 if (pressed(gamepad2.dpad_right, p2DR)) robot.turret.nudgeTrim(+1);
                 if (pressed(gamepad2.left_bumper, p2LB)) robot.turret.resetTrim();
+                if (pressed(gamepad2.right_bumper, p2RB)) robot.turret.toggleShootOnTheMove();
+                p2RB = gamepad2.right_bumper;
                 if (pressed(gamepad2.back, p2Back)) {
                     boolean blue = poseStorage.getAlliance() == PoseStorage.Alliance.BLUE;
                     follower.setPose(blue
@@ -120,6 +127,7 @@ public class TuningStation extends LinearOpMode {
                 // ---------- pose ----------
                 follower.update();
                 Pose pose = follower.pose();
+                robot.turret.setMeasuredVelocity(follower.velocity().vx, follower.velocity().vy, follower.velocity().omega);
                 double x = pose.x(), y = pose.y(), h = pose.heading();
                 poseStorage.savePoseToStorage(x, y, h);
 
@@ -154,7 +162,9 @@ public class TuningStation extends LinearOpMode {
                     robot.turret.updateTurretTarget(y);
                     robot.turret.setAngleDegrees(TURRET_FIXED_DEG);
                 }
-                double distance = robot.turret.distanceFromPivot(x, y, h);
+                // effective (virtual-goal) distance when auto-aiming, real distance otherwise
+                double distance = TURRET_AUTO_AIM ? robot.turret.getDistanceToTarget()
+                        : robot.turret.distanceFromPivot(x, y, h);
 
                 // ---------- RPM / hood source ----------
                 double rpm = TARGET_RPM;
@@ -208,6 +218,13 @@ public class TuningStation extends LinearOpMode {
                 packet.put("y", y);
                 packet.put("heading deg", Math.toDegrees(h));
                 packet.put("loop ms", dt * 1000);
+                packet.put("shoot on the move", robot.turret.isShootOnTheMove());
+                packet.put("vel x pinpoint", robot.turret.getVelX());
+                packet.put("vel x pose-diff", robot.turret.getDiffVelX());
+                packet.put("vel y pinpoint", robot.turret.getVelY());
+                packet.put("vel y pose-diff", robot.turret.getDiffVelY());
+                packet.put("omega pinpoint", robot.turret.getOmega());
+                packet.put("omega pose-diff", robot.turret.getDiffOmega());
                 DashboardField.draw(packet.fieldOverlay(), x, y, h, robot.turret);
                 dashboard.sendTelemetryPacket(packet);
 
@@ -218,6 +235,7 @@ public class TuningStation extends LinearOpMode {
                 telemetry.addData("hood", "%.3f", robot.turretHood.getTargetPos());
                 telemetry.addData("turret", "%.1f deg (%s)", robot.turret.getTurretHeading(), robot.turret.getAimMode());
                 telemetry.addData("alliance", poseStorage.getAlliance());
+                telemetry.addData("shoot on the move", robot.turret.isShootOnTheMove() ? "ON" : "off");
                 telemetry.addData("source", USE_REGRESSION ? "ShotRegression equations" : "TARGET_RPM / HOOD_POS");
                 telemetry.addData("raw servo", rawMsg);
                 telemetry.update();

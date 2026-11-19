@@ -73,6 +73,7 @@ public class MainDrive extends LinearOpMode {
 
                 driveFollower.update();
                 Pose pose = driveFollower.pose();
+                robot.turret.setMeasuredVelocity(driveFollower.velocity().vx, driveFollower.velocity().vy, driveFollower.velocity().omega);
                 poseStorage.savePoseToStorage(pose.x(), pose.y(), pose.heading());
 
                 driveProcesses.update(pose.x(), pose.y(), pose.heading(), dt);
@@ -92,6 +93,11 @@ public class MainDrive extends LinearOpMode {
                 packet.put("y", pose.y());
                 packet.put("heading deg", Math.toDegrees(pose.heading()));
                 packet.put("loop ms", dt * 1000);
+                packet.put("shoot on the move", robot.turret.isShootOnTheMove());
+                packet.put("vel x pinpoint", robot.turret.getVelX());
+                packet.put("vel x pose-diff", robot.turret.getDiffVelX());
+                packet.put("vel y pinpoint", robot.turret.getVelY());
+                packet.put("vel y pose-diff", robot.turret.getDiffVelY());
                 dashboard.sendTelemetryPacket(packet);
 
                 telemetry.addData("lf_motor_power", robot.drivetrain.getLFMotorPower());
@@ -108,6 +114,7 @@ public class MainDrive extends LinearOpMode {
                 telemetry.addData("turret heading", robot.turret.getTurretHeading());
                 telemetry.addData("turret servo", robot.turret.getLeftServoPosition());
                 telemetry.addData("turret mode", robot.turret.getAimMode());
+                telemetry.addData("shoot on the move", robot.turret.isShootOnTheMove() ? "ON" : "off");
                 telemetry.addData("turret trim deg", robot.turret.getTrimDeg());
                 telemetry.addData("target side", robot.turret.isOnHighSide() ? "HIGH y" : "LOW y");
                 telemetry.addData("hood pos", robot.turretHood.getTargetPos());
