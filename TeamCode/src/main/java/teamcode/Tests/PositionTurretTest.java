@@ -1,5 +1,6 @@
 package teamcode.Tests;
 
+import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.pedropathing.api.PoseFactory;
 import com.pedropathing.follower.Follower;
 import com.pedropathing.math.Pose;
@@ -12,6 +13,7 @@ import teamcode.RobotContainer.Robot;
 import teamcode.pedro.Constants;
 
 
+@Disabled
 @TeleOp
 public class PositionTurretTest extends LinearOpMode {
 

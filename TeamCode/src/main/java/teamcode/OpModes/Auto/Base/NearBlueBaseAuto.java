@@ -13,6 +13,7 @@ import com.pedropathing.paths.Path;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 
+import teamcode.Utility.DashboardField;
 import teamcode.ComplexMath.Storage.PoseStorage;
 import teamcode.RobotContainer.Robot;
 import teamcode.pedro.Constants;
@@ -109,6 +110,9 @@ public class NearBlueBaseAuto extends LinearOpMode {
         robot.vision.resetScanner();
         while (opModeIsActive()) {
             follower.update();
+            poseStorage.savePoseToStorage(follower.pose().x(), follower.pose().y(), follower.pose().heading());
+            robot.turret.autoAim(follower.pose().x(), follower.pose().y(), follower.pose().heading());
+            DashboardField.send(follower.pose().x(), follower.pose().y(), follower.pose().heading(), robot.turret);
             //robot.vision.scanForClusters();
             //robot.turret.update(follower.pose().x(), follower.pose().y(), follower.pose().heading(), gamepad2, 0);
             //robot.shooter.calculateShooterPID();

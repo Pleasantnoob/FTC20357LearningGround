@@ -1,5 +1,6 @@
 package teamcode.Subsystems;
 
+import com.acmerobotics.dashboard.config.Config;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
@@ -8,6 +9,7 @@ import com.qualcomm.robotcore.util.Range;
 
 
 
+@Config
 public class Shooter {
 
     //CONSTANTS
@@ -75,6 +77,10 @@ public class Shooter {
             shooterMotor.setPower(0);
         }
 
+
+        public double getLastPower(){
+            return lastPower;
+        }
 
         public double getRPM(){
             // goBILDA 6000 RPM motor on the flywheel. 28 counts per motor revolution.

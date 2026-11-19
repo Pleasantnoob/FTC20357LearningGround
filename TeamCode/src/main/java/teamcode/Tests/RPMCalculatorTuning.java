@@ -1,5 +1,6 @@
 package teamcode.Tests;
 
+import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.acmerobotics.dashboard.FtcDashboard;
 import com.acmerobotics.dashboard.config.Config;
 import com.acmerobotics.dashboard.telemetry.MultipleTelemetry;
@@ -14,6 +15,7 @@ import teamcode.RobotContainer.DriveProcesses;
 import teamcode.RobotContainer.Robot;
 import teamcode.pedro.Constants;
 
+@Disabled
 @Config
 @TeleOp
 public class RPMCalculatorTuning extends LinearOpMode {

@@ -22,6 +22,8 @@ import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
+import teamcode.ComplexMath.ShotRegression;
+import teamcode.Utility.DashboardField;
 import teamcode.ComplexMath.Storage.PoseStorage;
 import teamcode.RobotContainer.Robot;
 import teamcode.pedro.Constants;
@@ -113,7 +115,10 @@ public class NearRedBaseAuto extends LinearOpMode {
 
             while (opModeIsActive()) {
                 follower.update();
-                robot.shooter.setBaseTargetRPM(2240);
+                poseStorage.savePoseToStorage(follower.pose().x(), follower.pose().y(), follower.pose().heading());
+                robot.turret.autoAim(follower.pose().x(), follower.pose().y(), follower.pose().heading());
+                DashboardField.send(follower.pose().x(), follower.pose().y(), follower.pose().heading(), robot.turret);
+                robot.shooter.setBaseTargetRPM((int) Math.round(ShotRegression.rpmFor(robot.turret.getDistanceToTarget())));
                 robot.shooter.calculateShooterPID();
                 Scheduler.execute();
 

@@ -13,6 +13,7 @@ import com.pedropathing.paths.Path;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 
+import teamcode.Utility.DashboardField;
 import teamcode.ComplexMath.Storage.PoseStorage;
 import teamcode.RobotContainer.Robot;
 import teamcode.pedro.Constants;
@@ -103,6 +104,9 @@ public class FarRedBaseAuto extends LinearOpMode {
             waitForStart();
             while (opModeIsActive()) {
                 follower.update();
+                poseStorage.savePoseToStorage(follower.pose().x(), follower.pose().y(), follower.pose().heading());
+                robot.turret.autoAim(follower.pose().x(), follower.pose().y(), follower.pose().heading());
+                DashboardField.send(follower.pose().x(), follower.pose().y(), follower.pose().heading(), robot.turret);
                 Scheduler.execute();
 
                 telemetry.update();

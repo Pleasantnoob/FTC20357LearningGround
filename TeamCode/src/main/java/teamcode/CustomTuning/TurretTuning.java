@@ -1,5 +1,6 @@
 package teamcode.CustomTuning;
 
+import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.acmerobotics.dashboard.FtcDashboard;
 import com.acmerobotics.dashboard.config.Config;
 import com.acmerobotics.dashboard.telemetry.MultipleTelemetry;
@@ -14,6 +15,7 @@ import teamcode.Constants.GameConstants;
 import teamcode.Subsystems.Turret;
 import teamcode.pedro.Constants;
 
+@Disabled
 @Config
 @TeleOp
 public class TurretTuning extends LinearOpMode {

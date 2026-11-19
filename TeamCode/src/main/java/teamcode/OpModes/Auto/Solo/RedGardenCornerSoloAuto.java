@@ -14,13 +14,16 @@ import com.pedropathing.ivy.Command;
 import com.pedropathing.ivy.Scheduler;
 import com.pedropathing.math.Pose;
 import com.pedropathing.paths.Path;
+import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 
+import teamcode.Utility.DashboardField;
 import teamcode.ComplexMath.Storage.PoseStorage;
 import teamcode.RobotContainer.Robot;
 import teamcode.RobotContainer.SubsystemCommands;
 import teamcode.pedro.Constants;
 
+@Autonomous
 public class RedGardenCornerSoloAuto extends LinearOpMode {
 
 
@@ -250,6 +253,8 @@ public class RedGardenCornerSoloAuto extends LinearOpMode {
             Scheduler.execute();
             follower.update();
             poseStorage.savePoseToStorage(follower.pose().x(), follower.pose().y(), follower.pose().heading());
+            robot.turret.autoAim(follower.pose().x(), follower.pose().y(), follower.pose().heading());
+            DashboardField.send(follower.pose().x(), follower.pose().y(), follower.pose().heading(), robot.turret);
             //add concurrent PID methods
 
 

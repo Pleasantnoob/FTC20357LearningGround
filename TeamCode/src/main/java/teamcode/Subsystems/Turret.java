@@ -1,50 +1,157 @@
 package teamcode.Subsystems;
 
 import com.acmerobotics.dashboard.config.Config;
+import com.qualcomm.robotcore.hardware.AnalogInput;
 import com.qualcomm.robotcore.hardware.Gamepad;
 import com.qualcomm.robotcore.hardware.HardwareMap;
+import com.qualcomm.robotcore.hardware.PwmControl;
 import com.qualcomm.robotcore.hardware.Servo;
+import com.qualcomm.robotcore.hardware.ServoImplEx;
 import com.qualcomm.robotcore.util.Range;
 
 import teamcode.ComplexMath.Storage.PoseStorage;
 
+/**
+ * Two Axon MAX servos driving the turret (merged V2-robot + Meet-2.1).
+ *
+ * Speed comes from:
+ *  - Commanding the final angle in one step in AUTO (no slew), so the servo's own
+ *    controller runs at full speed.
+ *  - Leading the target: robot velocity and turn rate are estimated from the pose
+ *    and the aim is computed for where the robot will be latencySec from now.
+ *  - Aiming from the turret pivot, not the robot center.
+ *  - No aim dead zone: every change in the aim is sent. Only exact repeat values
+ *    are skipped, which saves hub traffic without losing accuracy.
+ *  - isOnTarget() so the gate opens the moment the turret arrives, not after a
+ *    fixed wait.
+ *
+ * Everything public static can be tuned live in FTC Dashboard.
+ */
 @Config
 public class Turret {
 
     public enum AimMode { IDLE, AUTO, MANUAL, HOLD_ZERO }
 
-    // Axon Max servos, geared 1:1 with the turret. No programmer, so 0.5 is straight
-    // ahead and the factory travel is about 350 degrees. ±110° of turret is only the
-    // middle of that travel; it is not stretched across the full 0-1 range.
-    public static double travelLimitDeg = 110;
-    public static double servoFullScaleDeg = 350;
+    // ---------------- Hardware names (must match the Driver Station config) ----------------
+    public static String LEFT_SERVO_NAME = "turretServoLeft";
+    public static String RIGHT_SERVO_NAME = "turretServoRight";
+    /** Optional Axon analog feedback wire into an analog port. If not configured, a timing model is used instead. */
+    public static String ENCODER_NAME = "turretEncoder";
+
+    // ---------------- Mechanics (MEASURE THESE) ----------------
+    /** Servo degrees covered by setPosition 0 -> 1 with the PWM range below. */
+    public static double servoRangeDeg = 355;
+    /** Servo degrees per turret degree. 1:1 on V2 (both servo gears drive one center gear). */
+    public static double gearRatio = 1.0;
+    /** Max turret travel each side of center. 175 = 350 deg total with a 10 deg gap at the back. */
+    public static double travelLimitDeg = 175;
+    /** Servo position where the turret points straight forward. */
+    public static double centerPos = 0.5;
+    /**
+     * V2: both servo gears mesh the same center gear, so both servos spin the SAME way -> false.
+     * WRONG VALUE = THE SERVOS FIGHT. Check with one servo unplugged first.
+     */
     public static boolean reverseRight = false;
-    public static double slewDegPerSec = 150;
+    /** Flip if positive degrees turn the turret clockwise (seen from above). Positive should be CCW / left. */
+    public static boolean invertDirection = false;
+    /** Axon accepts 500-2500us. Wider PWM = full travel. Recalibrate servoRangeDeg if changed. */
+    public static boolean useWidePwm = true;
+    public static double pwmLowUs = 500;
+    public static double pwmHighUs = 2500;
+
+    // ---------------- Turret pivot in robot frame (inches, +forward, +left) ----------------
+    public static double pivotForwardIn = 0;
+    public static double pivotLeftIn = 0;
+
+    // ---------------- Speed / prediction ----------------
+    /** How far ahead to aim. Roughly loop time + servo reaction. */
+    public static double latencySec = 0.06;
+    /** Turret speed in deg/s, used by the on-target model when there is no encoder. */
+    public static double turretDegPerSec = 500;
+    /** Velocity filter, 0..1. Higher = reacts faster but noisier. */
+    public static double velocityAlpha = 0.5;
+    public static double onTargetTolDeg = 1.5; // only gates the shot; aim itself has no dead zone
+    /** Write deadband in servo units. 0 = send every change (no aim dead zone); only exact repeats are skipped. */
+    public static double writeDeadbandPos = 0;
+
+    // ---------------- Optional analog feedback (Axon: 0-3.3V over 360 deg of servo) ----------------
+    public static double encoderVoltsAtCenter = 1.65;
+    public static double encoderServoDegPerVolt = 360.0 / 3.3;
+    public static boolean encoderInverted = false;
+
+    // ---------------- Targets (field inches). "High" = the half of the field with y above sideSwitchY ----------------
+    public static double redHighX = 84.79, redHighY = 87.32;
+    public static double redLowX = 83.84, redLowY = 50.27;
+    public static double blueHighX = 58.05, blueHighY = 86.41;
+    public static double blueLowX = 57.82, blueLowY = 53.41;
+    public static double sideSwitchY = 72;
+    /** The robot must cross this far past the line before the target switches, so it doesn't flicker on the line. */
+    public static double sideSwitchHysteresisIn = 3;
+
+    // ---------------- Trim (gamepad 2 fine adjust) ----------------
+    public static double trimStepDeg = 1.0;
+
+    // ---------------- Manual override ----------------
+    public static double slewDegPerSec = 200;
     public static double stickDeadband = 0.08;
 
-    private final Servo leftTurret;
-    private final Servo rightTurret;
+    private final Servo leftServo;
+    private final Servo rightServo;
+    private final AnalogInput encoder; // may be null
     private final PoseStorage poseStorage = new PoseStorage();
 
     private double turretTargetX = 72;
     private double turretTargetY = 72;
     private double commandedDeg = 0;
-    private double lastLeft = Double.NaN;
-    private double lastRight = Double.NaN;
+    private double estimatedDeg = 0;
+    private boolean reachable = true;
+    private double lastWrittenPos = Double.NaN;
     private boolean zeroHeld = false;
+    private boolean onHighSide = false;
+    private boolean sideKnown = false;
+    private double trimDeg = 0;
+    private double lastDistance = 0;
     private AimMode aimMode = AimMode.IDLE;
 
+    // velocity estimate
+    private long lastNanos = 0;
+    private double lastX, lastY, lastH;
+    private boolean havePose = false;
+    private double vx = 0, vy = 0, omega = 0;
+
     public Turret(HardwareMap hardwareMap) {
-        leftTurret = hardwareMap.get(Servo.class, "leftTurret");
-        rightTurret = hardwareMap.get(Servo.class, "rightTurret");
+        leftServo = hardwareMap.get(Servo.class, LEFT_SERVO_NAME);
+        rightServo = hardwareMap.get(Servo.class, RIGHT_SERVO_NAME);
+        encoder = hardwareMap.tryGet(AnalogInput.class, ENCODER_NAME);
+
+        leftServo.setDirection(Servo.Direction.FORWARD);
+        rightServo.setDirection(reverseRight ? Servo.Direction.REVERSE : Servo.Direction.FORWARD);
+
+        if (useWidePwm) {
+            PwmControl.PwmRange range = new PwmControl.PwmRange(pwmLowUs, pwmHighUs);
+            if (leftServo instanceof ServoImplEx) ((ServoImplEx) leftServo).setPwmRange(range);
+            if (rightServo instanceof ServoImplEx) ((ServoImplEx) rightServo).setPwmRange(range);
+        }
+
+        // Hold center from init so the turret isn't limp. Both servos get the same command
+        // in the same call, so they can't drift apart.
+        commandDegrees(0);
+        estimatedDeg = 0;
     }
 
+    // =====================================================================================
+    // Main entry (TeleOp). Call once per loop.
+    // =====================================================================================
     public void update(double posX, double posY, double robotHeadingRad, Gamepad overridePad, double dt) {
+        updateVelocity(posX, posY, robotHeadingRad);
+        // No alliance set (auto didn't run) -> aims as RED, see updateTurretTarget.
+        updateTurretTarget(posY);
+        lastDistance = distanceFromPivot(posX, posY, robotHeadingRad);
+
         double stick = overridePad.right_stick_x;
         if (Math.abs(stick) > stickDeadband) {
             zeroHeld = false;
             slew(stick, dt);
-            aimMode = AimMode.MANUAL;
             return;
         }
 
@@ -56,19 +163,30 @@ public class Turret {
 
         if (zeroHeld) {
             commandDegrees(0);
+            reachable = true;
             aimMode = AimMode.HOLD_ZERO;
             return;
         }
 
-        PoseStorage.Alliance alliance = poseStorage.getAlliance();
-        if (alliance == null || alliance == PoseStorage.Alliance.NONE) {
-            aimMode = AimMode.IDLE;
-            return;
-        }
+        aimAtTarget(posX, posY, robotHeadingRad);
+    }
 
+    /**
+     * Autos: picks our alliance's target for the side of the field we're on and aims at it
+     * with lead compensation. Call once per loop.
+     */
+    public void autoAim(double posX, double posY, double robotHeadingRad) {
+        updateVelocity(posX, posY, robotHeadingRad);
         updateTurretTarget(posY);
-        track(posX, posY, robotHeadingRad);
-        aimMode = AimMode.AUTO;
+        lastDistance = distanceFromPivot(posX, posY, robotHeadingRad);
+        aimAtTarget(posX, posY, robotHeadingRad);
+    }
+
+    /** Aim at whatever setTarget() last set (no alliance/side logic). Autos should use autoAim(). */
+    public void track(double posX, double posY, double robotHeadingRad) {
+        updateVelocity(posX, posY, robotHeadingRad);
+        lastDistance = distanceFromPivot(posX, posY, robotHeadingRad);
+        aimAtTarget(posX, posY, robotHeadingRad);
     }
 
     public void setTarget(double x, double y) {
@@ -76,72 +194,122 @@ public class Turret {
         turretTargetY = y;
     }
 
-    public void track(double posX, double posY, double robotHeadingRad) {
-        commandDegrees(robotRelativeDegrees(posX, posY, robotHeadingRad));
-        aimMode = AimMode.AUTO;
-    }
-
     public void slew(double stick, double dt) {
-        double cappedDt = Math.min(Math.max(dt, 0), 0.05);
-        double next = commandedDeg + stick * slewDegPerSec * cappedDt;
-        commandDegrees(next);
+        double cappedDt = Range.clip(dt, 0, 0.05);
+        commandDegrees(commandedDeg + stick * slewDegPerSec * cappedDt);
+        reachable = true;
         aimMode = AimMode.MANUAL;
     }
 
-    public double robotRelativeDegrees(double posX, double posY, double robotHeadingRad) {
-        double disX = turretTargetX - posX;
-        double disY = turretTargetY - posY;
-        double targetFieldBearing = Math.toDegrees(Math.atan2(disY, disX));
-        double robotHeadingDeg = Math.toDegrees(robotHeadingRad);
-        double robotRelative = normalizeDegrees(targetFieldBearing - robotHeadingDeg);
-        double limit = Math.abs(travelLimitDeg);
-        return Range.clip(robotRelative, -limit, limit);
+    /** Point the turret at a robot-relative angle (degrees, + = left). Used for presets / auto. */
+    public void setAngleDegrees(double turretDeg) {
+        commandDegrees(turretDeg);
+        reachable = Math.abs(turretDeg) <= Math.abs(travelLimitDeg);
     }
 
+    // =====================================================================================
+    // Aiming math
+    // =====================================================================================
+    private void aimAtTarget(double posX, double posY, double headingRad) {
+        // predict where the robot will be when the turret gets there
+        double px = posX + vx * latencySec;
+        double py = posY + vy * latencySec;
+        double ph = headingRad + omega * latencySec;
+
+        double desired = robotRelativeDegreesRaw(px, py, ph) + trimDeg;
+        double limit = Math.abs(travelLimitDeg);
+        reachable = Math.abs(desired) <= limit;
+        commandDegrees(desired);
+        aimMode = AimMode.AUTO;
+    }
+
+    /** Robot-relative turret angle to the target, clipped to travel. Kept for compatibility. */
+    public double robotRelativeDegrees(double posX, double posY, double robotHeadingRad) {
+        double limit = Math.abs(travelLimitDeg);
+        return Range.clip(robotRelativeDegreesRaw(posX, posY, robotHeadingRad), -limit, limit);
+    }
+
+    private double robotRelativeDegreesRaw(double posX, double posY, double headingRad) {
+        double cos = Math.cos(headingRad);
+        double sin = Math.sin(headingRad);
+        // turret pivot in field coordinates
+        double pivotX = posX + cos * pivotForwardIn - sin * pivotLeftIn;
+        double pivotY = posY + sin * pivotForwardIn + cos * pivotLeftIn;
+
+        double bearingRad = Math.atan2(turretTargetY - pivotY, turretTargetX - pivotX);
+        return Math.toDegrees(normalizeRad(bearingRad - headingRad));
+    }
+
+    /** Inches from the turret pivot to the current target. */
+    public double distanceFromPivot(double posX, double posY, double headingRad) {
+        double cos = Math.cos(headingRad);
+        double sin = Math.sin(headingRad);
+        double pivotX = posX + cos * pivotForwardIn - sin * pivotLeftIn;
+        double pivotY = posY + sin * pivotForwardIn + cos * pivotLeftIn;
+        return Math.hypot(turretTargetX - pivotX, turretTargetY - pivotY);
+    }
+
+    /** Distance (in) from the turret pivot to the target, as of the last update/autoAim/track. */
+    public double getDistanceToTarget() { return lastDistance; }
+
+    private void updateVelocity(double x, double y, double h) {
+        long now = System.nanoTime();
+        if (havePose) {
+            double dt = (now - lastNanos) / 1e9;
+            if (dt > 1e-3 && dt < 0.25) {
+                double a = Range.clip(velocityAlpha, 0, 1);
+                vx = a * ((x - lastX) / dt) + (1 - a) * vx;
+                vy = a * ((y - lastY) / dt) + (1 - a) * vy;
+                omega = a * (normalizeRad(h - lastH) / dt) + (1 - a) * omega;
+            }
+            // advance the timing model of where the turret actually is
+            if (dt > 0 && dt < 0.25) {
+                double step = turretDegPerSec * dt;
+                estimatedDeg += Range.clip(commandedDeg - estimatedDeg, -step, step);
+            }
+        }
+        lastNanos = now;
+        lastX = x;
+        lastY = y;
+        lastH = h;
+        havePose = true;
+    }
+
+    // =====================================================================================
+    // Target selection (field coordinates, inches)
+    // =====================================================================================
+    /**
+     * Picks the target on the SAME half of the field as the robot, for our alliance.
+     * Switches when the robot crosses sideSwitchY (with hysteresis). No alliance -> RED.
+     */
     public void updateTurretTarget(double y) {
-        PoseStorage.Alliance alliance = poseStorage.getAlliance();
-        if (alliance == PoseStorage.Alliance.RED) {
-            if (y < 72) {
-                turretTargetX = 84.79;
-                turretTargetY = 87.32;
-            } else {
-                turretTargetX = 83.84;
-                turretTargetY = 50.27;
-            }
-        } else if (alliance == PoseStorage.Alliance.BLUE) {
-            if (y < 72) {
-                turretTargetX = 58.05;
-                turretTargetY = 86.41;
-            } else {
-                turretTargetX = 57.82;
-                turretTargetY = 53.41;
-            }
+        if (!sideKnown) {
+            onHighSide = y >= sideSwitchY;
+            sideKnown = true;
+        } else if (onHighSide && y < sideSwitchY - sideSwitchHysteresisIn) {
+            onHighSide = false;
+        } else if (!onHighSide && y > sideSwitchY + sideSwitchHysteresisIn) {
+            onHighSide = true;
+        }
+
+        if (poseStorage.getAlliance() == PoseStorage.Alliance.BLUE) {
+            turretTargetX = onHighSide ? blueHighX : blueLowX;
+            turretTargetY = onHighSide ? blueHighY : blueLowY;
         } else {
-            turretTargetX = 72;
-            turretTargetY = 72;
+            turretTargetX = onHighSide ? redHighX : redLowX;
+            turretTargetY = onHighSide ? redHighY : redLowY;
         }
     }
 
-    public double getTurretTargetX() {
-        return turretTargetX;
-    }
+    public void addTrimDeg(double deg) { trimDeg += deg; }
+    public void nudgeTrim(int direction) { trimDeg += direction * trimStepDeg; }
+    public void resetTrim() { trimDeg = 0; }
+    public double getTrimDeg() { return trimDeg; }
+    public boolean isOnHighSide() { return onHighSide; }
 
-    public double getTurretTargetY() {
-        return turretTargetY;
-    }
-
-    public double getTurretHeading() {
-        return commandedDeg;
-    }
-
-    public double getLeftServoPosition() {
-        return servoPosition(commandedDeg);
-    }
-
-    public AimMode getAimMode() {
-        return aimMode;
-    }
-
+    // =====================================================================================
+    // Servo output
+    // =====================================================================================
     private void commandDegrees(double degrees) {
         double limit = Math.abs(travelLimitDeg);
         commandedDeg = Range.clip(degrees, -limit, limit);
@@ -149,26 +317,51 @@ public class Turret {
     }
 
     private void writeServos() {
-        double left = servoPosition(commandedDeg);
-        double right = reverseRight ? 1.0 - left : left;
-        if (left != lastLeft) {
-            leftTurret.setPosition(left);
-            lastLeft = left;
-        }
-        if (right != lastRight) {
-            rightTurret.setPosition(right);
-            lastRight = right;
+        double pos = servoPosition(commandedDeg);
+        if (Double.isNaN(lastWrittenPos) || Math.abs(pos - lastWrittenPos) > writeDeadbandPos) {
+            // Direction.REVERSE on the right servo does the mirroring, so both get the same number.
+            leftServo.setPosition(pos);
+            rightServo.setPosition(pos);
+            lastWrittenPos = pos;
         }
     }
 
-    private double servoPosition(double degrees) {
-        double scale = servoFullScaleDeg == 0 ? 350 : Math.abs(servoFullScaleDeg);
-        return Range.clip(0.5 + degrees / scale, 0.0, 1.0);
+    private double servoPosition(double turretDeg) {
+        double range = servoRangeDeg == 0 ? 355 : Math.abs(servoRangeDeg);
+        double sign = invertDirection ? -1 : 1;
+        return Range.clip(centerPos + sign * turretDeg * gearRatio / range, 0.0, 1.0);
     }
 
-    private double normalizeDegrees(double degrees) {
-        while (degrees > 180) degrees -= 360;
-        while (degrees < -180) degrees += 360;
-        return degrees;
+    // =====================================================================================
+    // Feedback / status
+    // =====================================================================================
+    /** Turret angle (deg): measured if an encoder is wired, otherwise the timing model. */
+    public double getActualDeg() {
+        if (encoder != null) {
+            double servoDeg = (encoder.getVoltage() - encoderVoltsAtCenter) * encoderServoDegPerVolt;
+            if (encoderInverted) servoDeg = -servoDeg;
+            if (invertDirection) servoDeg = -servoDeg;
+            return servoDeg / (gearRatio == 0 ? 1 : gearRatio);
+        }
+        return estimatedDeg;
+    }
+
+    /** True when the target is within travel and the turret has arrived. Use it to gate the shooter. */
+    public boolean isOnTarget() {
+        return reachable && Math.abs(getActualDeg() - commandedDeg) <= onTargetTolDeg;
+    }
+
+    public boolean isTargetReachable() { return reachable; }
+    public boolean hasEncoder() { return encoder != null; }
+    public double getTurretTargetX() { return turretTargetX; }
+    public double getTurretTargetY() { return turretTargetY; }
+    public double getTurretHeading() { return commandedDeg; }
+    public double getLeftServoPosition() { return servoPosition(commandedDeg); }
+    public AimMode getAimMode() { return aimMode; }
+
+    private static double normalizeRad(double a) {
+        while (a > Math.PI) a -= 2 * Math.PI;
+        while (a < -Math.PI) a += 2 * Math.PI;
+        return a;
     }
 }

@@ -6,6 +6,8 @@ import static com.pedropathing.ivy.commands.Commands.instant;
 import com.pedropathing.ivy.Command;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
+import teamcode.ComplexMath.ShotRegression;
+
 public class SubsystemCommands {
 
 
@@ -58,7 +60,14 @@ public class SubsystemCommands {
 
     public Command updateShooterRPM(){
         // add the autoRPM algorithm in the setBaseTargetRPM algorithm
-        return infinite(() -> robot.shooter.setBaseTargetRPM(2240));
+        // Distance -> RPM + hood from the ShotRegression equations (2240 + hood default until filled in).
+        // Needs robot.turret.autoAim(...) running every loop so the distance is current.
+        return infinite(() -> {
+            double d = robot.turret.getDistanceToTarget();
+            robot.shooter.setBaseTargetRPM((int) Math.round(ShotRegression.rpmFor(d)));
+            robot.turretHood.setBase(ShotRegression.hoodFor(d));
+            robot.turretHood.hold();
+        });
     }
     public Command zeroShooterRPM(){
         return instant(() -> robot.shooter.setBaseTargetRPM(0));
