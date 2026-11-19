@@ -60,8 +60,8 @@ public class Turret {
     public static double pwmHighUs = 2500;
 
     // ---------------- Turret pivot in robot frame (inches, +forward, +left) ----------------
-    public static double pivotForwardIn = 0;
-    public static double pivotLeftIn = 0;
+    public static double pivotForwardIn = 15.021 / 25.4; // CAD: 15.021 mm toward the front (0.591 in)
+    public static double pivotLeftIn = 0;                // CAD: centered side to side
 
     // ---------------- Speed / prediction ----------------
     /** How far ahead to aim. Roughly loop time + servo reaction. */
