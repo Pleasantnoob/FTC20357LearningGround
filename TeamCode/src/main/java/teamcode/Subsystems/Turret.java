@@ -10,6 +10,7 @@ import com.qualcomm.robotcore.hardware.ServoImplEx;
 import com.qualcomm.robotcore.util.Range;
 
 import teamcode.ComplexMath.Storage.PoseStorage;
+import teamcode.Utility.Field;
 
 /**
  * Two Axon MAX servos driving the turret (merged V2-robot + Meet-2.1).
@@ -86,16 +87,17 @@ public class Turret {
 
     // ---------------- Targets (field inches). "High" = the half of the field with y above sideSwitchY ----------------
     // From the manual (TU09 fig 9-9 / 9-10), HIVE pivots at field center:
-    //  - red and blue HIVE centers are 25.5 in apart -> x = 72 +/- 12.75. In the Pedro visualizer frame
+    //  - field center is 70.75 (visualizer field = 141.5 in, see Utility/Field)
+    //  - red and blue HIVE centers are 25.5 in apart -> x = 70.75 +/- 12.75. In the Pedro visualizer frame
     //    ((0,0) = corner by the red garden) the red HIVE is the LOW-x one.
     //  - CELL centers are 30.9 in apart (18.84 gap + 12.04 cell); tipped 30 deg, the up CELL's
-    //    opening sits about 15 in from center -> y = 72 +/- 15
+    //    opening sits about 15 in from center -> y = 70.75 +/- 15
     // Check on a real field: in TuningStation the aim line should hit the middle of each CELL.
-    public static double redHighX = 59.25, redHighY = 87;
-    public static double redLowX = 59.25, redLowY = 57;
-    public static double blueHighX = 84.75, blueHighY = 87;
-    public static double blueLowX = 84.75, blueLowY = 57;
-    public static double sideSwitchY = 72;
+    public static double redHighX = 58, redHighY = 85.75;
+    public static double redLowX = 58, redLowY = 55.75;
+    public static double blueHighX = 83.5, blueHighY = 85.75;
+    public static double blueLowX = 83.5, blueLowY = 55.75;
+    public static double sideSwitchY = Field.CENTER;
     /** The robot must cross this far past the line before the target switches, so it doesn't flicker on the line. */
     public static double sideSwitchHysteresisIn = 3;
 
@@ -129,8 +131,8 @@ public class Turret {
     private final AnalogInput encoder; // may be null
     private final PoseStorage poseStorage = new PoseStorage();
 
-    private double turretTargetX = 72;
-    private double turretTargetY = 72;
+    private double turretTargetX = Field.CENTER;
+    private double turretTargetY = Field.CENTER;
     private double commandedDeg = 0;
     private double estimatedDeg = 0;
     private boolean reachable = true;
@@ -151,7 +153,7 @@ public class Turret {
     private double vx = 0, vy = 0, omega = 0;          // from pose differences
     private double measVx, measVy, measOmega;           // from the Pinpoint
     private boolean haveMeasured = false;
-    private double virtualX = 72, virtualY = 72;
+    private double virtualX = Field.CENTER, virtualY = Field.CENTER;
 
     public Turret(HardwareMap hardwareMap) {
         this(hardwareMap, true);

@@ -99,9 +99,13 @@ Set with the Axon programmer (MAX MK2 needs the Programmer MK2 + Axon Software M
 Analog feedback (MAX MK2 4th wire): config it as an Analog Input named `turretEncoder`. Axon hasn't published the voltage range, so check it with a multimeter stays at or under 3.3 V before plugging into the hub. Calibrate in TuningStation from the "turret encoder V" graph: volts at center -> `encoderVoltsAtCenter`, change over a known angle -> `encoderServoDegPerVolt`.
 
 ## Field coordinates
-Use the Pedro visualizer's frame (visualizer.pedropathing.com): (0, 0) is the corner by the RED garden, x runs along the red-garden wall, y away from it. In this frame the RED HIVE is the low-x one (x ≈ 59) and the blue HIVE the high-x one (x ≈ 85). Every auto, the reset poses and the turret targets use this frame. (The older autos were drawn with red on the high-x side; they were rotated 180° into this frame on 2026-11-20.)
+Use the Pedro visualizer's frame (visualizer.pedropathing.com). Its BioBuzz field is **141.5 in** wall to wall (not 144), so the center is (70.75, 70.75). (0, 0) is the corner by the RED garden. `Utility/Field.java` holds these numbers; use it instead of typing 144 or 72.
 
-To make the other alliance's version of an auto, rotate it 180° about the field center: x → 144 − x, y → 144 − y, heading + 180°. Don't mirror across one axis: the field isn't mirror-symmetric (gardens and loading zones are in rotated spots) and a mirror flips the robot left-right. `GardenFlowersAuto` does this in code: one set of red poses, and the blue subclass rotates them.
+In this frame the RED HIVE is the low-x one (x ≈ 58) and the blue HIVE the high-x one (x ≈ 83.5). Every auto, the reset poses and the turret targets use this frame. (The older autos were drawn with red on the high-x side; they were rotated into this frame on 2026-11-20.)
+
+To make the other alliance's version of an auto, rotate it 180° about the center: x → 141.5 − x, y → 141.5 − y, heading + 180°. Don't mirror across one axis (that includes the visualizer's own mirror option, which was made for DECODE): the BioBuzz field isn't mirror-symmetric, and a mirror flips the robot left-right. `GardenFlowersAuto` rotates in code: one set of red poses, and the blue subclass rotates them.
+
+`PedroPaths/` has the visualizer files (`.pp.json`) for the autos, red and blue. Load them with File → Open in the visualizer.
 
 ## Game facts that matter for code (manual TU09: https://ftc-resources.firstinspires.org/ftc/game/manual)
 - Each alliance has a HIVE in the field center: a see-saw with 2 CELLS, and exactly one CELL faces up. Launching into the up CELL tips it, and then the other one is up. Only the up CELL scores.

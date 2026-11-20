@@ -36,8 +36,8 @@ public class MainDrive extends LinearOpMode {
 
     // Gamepad 2 Back/Share resets the robot's position to this spot. Put the robot there first.
     // PLACEHOLDERS: the Near Red / Near Blue auto start poses (inches, degrees).
-    public static double RED_RESET_X = 11, RED_RESET_Y = 36, RED_RESET_HEADING_DEG = 0;
-    public static double BLUE_RESET_X = 129, BLUE_RESET_Y = 9, BLUE_RESET_HEADING_DEG = 90;
+    public static double RED_RESET_X = 8.5, RED_RESET_Y = 33.5, RED_RESET_HEADING_DEG = 0;
+    public static double BLUE_RESET_X = 126.5, BLUE_RESET_Y = 6.5, BLUE_RESET_HEADING_DEG = 90;
 
     private final PoseStorage poseStorage = new PoseStorage();
     private Robot robot;

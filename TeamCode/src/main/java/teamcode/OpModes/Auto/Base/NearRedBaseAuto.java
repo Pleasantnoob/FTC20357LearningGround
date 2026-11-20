@@ -33,7 +33,7 @@ import teamcode.pedro.Constants;
  * Shooting isn't written yet (see the "add shoot" spots below).
  * Spins the flywheel the whole auto (RPM from ShotRegression).
  * The turret auto-aims the whole time and the position is saved for TeleOp.
- * Start pose: (11, 36, 0) (Pedro field inches/degrees). Sets alliance = RED.
+ * Start pose: (8.5, 33.5, 0) (Pedro field inches/degrees). Sets alliance = RED.
  */
 @Config
 @Autonomous
@@ -48,9 +48,9 @@ public class NearRedBaseAuto extends LinearOpMode {
     // -----
     // Poses
     // -----
-    private final Pose startPos = poseFactory.of(11, 36, 0);
-    private final Pose farCellShootPos = poseFactory.of(24, 14, 0);
-    private final Pose park = poseFactory.of(16, 104, 0);
+    private final Pose startPos = poseFactory.of(8.5, 33.5, 0);
+    private final Pose farCellShootPos = poseFactory.of(21.5, 11.5, 0);
+    private final Pose park = poseFactory.of(13.5, 101.5, 0);
 
     // -------
     // Paths

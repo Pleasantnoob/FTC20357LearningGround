@@ -9,7 +9,7 @@ import teamcode.Subsystems.Turret;
 
 /**
  * Draws the robot, turret aim and targets on the FTC Dashboard field view.
- * Pedro coordinates (0-144, corner origin) are shifted to the dashboard's center origin.
+ * Pedro coordinates (0-141.5, corner origin, see Field) are shifted to the dashboard's center origin.
  * If the drawing is rotated relative to the real field, change ROTATION_DEG (0/90/180/270)
  * or MIRROR_X in the dashboard.
  */
@@ -38,7 +38,7 @@ public class DashboardField {
     public static void draw(Canvas c, double x, double y, double headingRad, Turret turret) {
         // field border
         c.setStroke("#888888").setStrokeWidth(1);
-        double[] a = p(0, 0), b = p(144, 0), d = p(144, 144), e = p(0, 144);
+        double[] a = p(0, 0), b = p(Field.SIZE, 0), d = p(Field.SIZE, Field.SIZE), e = p(0, Field.SIZE);
         c.strokePolygon(new double[]{a[0], b[0], d[0], e[0]}, new double[]{a[1], b[1], d[1], e[1]});
 
         // all four targets, the active one filled
@@ -91,7 +91,7 @@ public class DashboardField {
 
     /** Pedro field inches -> dashboard canvas inches. */
     private static double[] p(double x, double y) {
-        double dx = x - 72, dy = y - 72;
+        double dx = x - Field.CENTER, dy = y - Field.CENTER;
         if (MIRROR_X) dx = -dx;
         double rot = Math.toRadians(ROTATION_DEG);
         double cr = Math.cos(rot), sr = Math.sin(rot);

@@ -22,12 +22,14 @@ import teamcode.ComplexMath.ShotRegression;
 import teamcode.ComplexMath.Storage.PoseStorage;
 import teamcode.RobotContainer.Robot;
 import teamcode.Utility.DashboardField;
+import teamcode.Utility.Field;
 import teamcode.pedro.Constants;
 
 /**
  * Garden + flowers auto for both alliances. The poses below are the RED version, straight from
  * the Pedro visualizer ((0,0) = corner by the red garden). The BLUE version is the same auto
- * rotated 180 deg around the field center: x -> 144 - x, y -> 144 - y, heading + 180.
+ * rotated 180 deg around the field center: x -> 141.5 - x, y -> 141.5 - y, heading + 180
+ * (141.5 = the visualizer's field size, see Utility/Field).
  * The field is built that way (red garden / flowers / loading zone rotate onto blue's), and a
  * rotation doesn't mirror the robot, so the same robot works on both sides.
  * Don't mirror across one axis: that flips the robot left-right and lands on a corner with no garden.
@@ -73,7 +75,7 @@ public abstract class GardenFlowersAuto extends LinearOpMode {
     /** Red pose as drawn in the visualizer; rotated 180 deg for blue. */
     private Pose p(double x, double y, double headingDeg) {
         if (alliance() == PoseStorage.Alliance.BLUE) {
-            return poseFactory.of(144 - x, 144 - y, headingDeg + 180);
+            return poseFactory.of(Field.rotX(x), Field.rotY(y), headingDeg + 180);
         }
         return poseFactory.of(x, y, headingDeg);
     }

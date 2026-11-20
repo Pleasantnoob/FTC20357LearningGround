@@ -23,7 +23,7 @@ import teamcode.pedro.Constants;
  * Far Blue base auto: drives from the start pose to the near-cell shooting spot, then parks.
  * Shooting isn't written yet (see the "add shoot" spots below).
  * The turret auto-aims the whole time and the position is saved for TeleOp.
- * Start pose: (136, 110, 180) (Pedro field inches/degrees). Sets alliance = BLUE.
+ * Start pose: (133.5, 107.5, 180) (Pedro field inches/degrees). Sets alliance = BLUE.
  */
 @Autonomous
 public class FarBlueBaseAuto extends LinearOpMode {
@@ -37,12 +37,12 @@ public class FarBlueBaseAuto extends LinearOpMode {
     // -----
     // Poses
     // -----
-    private final Pose startPos = poseFactory.of(136, 110, 180);
+    private final Pose startPos = poseFactory.of(133.5, 107.5, 180);
     // check if the distance from the cell is the same for each side. It should be relatively simple and just measure
     // the y difference
-    private final Pose nearCellShootPos = poseFactory.of(88, 110, 180);
-    private final Pose nearCellShootPosControl = poseFactory.of(133, 115, 180); //reminder: irrelevant control point heading
-    private final Pose park = poseFactory.of(129.5, 46, 180);
+    private final Pose nearCellShootPos = poseFactory.of(85.5, 107.5, 180);
+    private final Pose nearCellShootPosControl = poseFactory.of(130.5, 112.5, 180); //reminder: irrelevant control point heading
+    private final Pose park = poseFactory.of(127, 43.5, 180);
 
     // -------
     // Paths
