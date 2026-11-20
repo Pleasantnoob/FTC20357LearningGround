@@ -71,7 +71,8 @@ Useful while debugging:
 | Intake / transfer | `intakeMotor`, `transferMotor` (1620 rpm) |
 | Flywheel | `leftShooterMotor` (6000 rpm, 28 CPR) |
 | Turret | `turretServoLeft`, `turretServoRight` |
-| Gate / match loader / hood | `turretGate`, `matchLoader`, `turretHood` |
+| Gate / hood | `turretGate`, `turretHood` |
+| Match loader (flower ramp, 2 torque servos) | `matchLoaderLeft`, `matchLoaderRight` |
 | Odometry / camera | `pinpoint`, `Webcam 1` (Arducam) |
 
 The turret is two Axon MAX servos, 1:1. Both servo gears drive one center gear, so both servos spin the same way and `reverseRight = false`. Setting it to `true` makes them fight. Travel is ±175°. The turret pivot is 15.021 mm forward of the robot center (from CAD).

@@ -19,6 +19,7 @@ import teamcode.ComplexMath.ShotRegression;
 import teamcode.ComplexMath.Storage.PoseStorage;
 import teamcode.OpModes.TeleOp.MainDrive;
 import teamcode.RobotContainer.Robot;
+import teamcode.Subsystems.Microsystems.MatchLoader;
 import teamcode.Subsystems.Turret;
 import teamcode.Utility.DashboardField;
 
@@ -41,7 +42,14 @@ import teamcode.Utility.DashboardField;
  *
  * NOTHING MOVES UNTIL YOU TURN IT ON
  *   Every servo starts off: TURRET_MODE = OFF (both turret servos limp), HOOD_ON / GATE_ON /
- *   LOADER_ON = false, flywheel off. Turn each one on only after its positions are tuned.
+ *   LOADER_MODE = OFF, flywheel off. Turn each one on only after its positions are tuned.
+ *
+ * MATCH LOADER (two servos on the ramp; LOADER_MODE, LOADER_RAW_POS)
+ *   1. LEFT_ONLY: slide LOADER_RAW_POS to find stowed and deployed -> MatchLoader stowedPos / deployedPos.
+ *   2. RIGHT_ONLY at the same numbers: the ramp should land in the same spots. If it moves the
+ *      wrong way, flip MatchLoader.reverseRight.
+ *   3. BOTH_RAW: nudge MatchLoader.rightOffsetPos until "hub current A" is lowest / no buzzing.
+ *   4. GAMEPAD: LB deploys / stows like in a match.
  *
  * TURRET (group TuningStation: TURRET_MODE, TURRET_RAW_POS)
  *   OFF ........ both servos limp, turn the turret by hand
@@ -69,7 +77,7 @@ import teamcode.Utility.DashboardField;
  *   then set USE_REGRESSION = true to check them.
  *
  * GAMEPAD 1: sticks drive | LT shoot (flywheel + feed, gate opens if GATE_ON, no RPM check)
- *            RT collect | RB eject | LB toggle match loader (if LOADER_ON)
+ *            RT collect | RB eject | LB toggle match loader (LOADER_MODE = GAMEPAD)
  * GAMEPAD 2: same turret / trim / alliance / pose-reset buttons as MainDrive (turret ones only
  *            in AUTO_AIM), right bumper toggles shoot-on-the-move
  *
@@ -96,8 +104,15 @@ public class TuningStation extends LinearOpMode {
     // ---- Gate / match loader ----
     /** false = the gate servo is never written. */
     public static boolean GATE_ON = false;
-    /** false = gamepad 1 LB does nothing to the match loader. */
-    public static boolean LOADER_ON = false;
+    /**
+     * Match loader (two servos on one ramp), same idea as TURRET_MODE:
+     * OFF = both limp | LEFT_ONLY / RIGHT_ONLY = one servo at LOADER_RAW_POS, other limp |
+     * BOTH_RAW = left at LOADER_RAW_POS, right at LOADER_RAW_POS + MatchLoader.rightOffsetPos |
+     * GAMEPAD = normal deploy / stow on gamepad 1 LB.
+     */
+    public enum LoaderMode { OFF, LEFT_ONLY, RIGHT_ONLY, BOTH_RAW, GAMEPAD }
+    public static LoaderMode LOADER_MODE = LoaderMode.OFF;
+    public static double LOADER_RAW_POS = 0.0;
 
     // ---- Turret ----
     public enum TurretMode { OFF, LEFT_ONLY, RIGHT_ONLY, BOTH_RAW, FIXED_DEG, AUTO_AIM }
@@ -124,6 +139,8 @@ public class TuningStation extends LinearOpMode {
         Robot robot = new Robot(hardwareMap, false);
         List<LynxModule> hubs = hardwareMap.getAll(LynxModule.class);
         TurretMode appliedMode = null;
+        LoaderMode appliedLoader = null;
+        robot.matchLoader.setPowered(false, false); // limp until LOADER_MODE says otherwise
         FtcDashboard dashboard = FtcDashboard.getInstance();
 
         if (poseStorage.getAlliance() == null || poseStorage.getAlliance() == PoseStorage.Alliance.NONE) {
@@ -180,6 +197,10 @@ public class TuningStation extends LinearOpMode {
                     raw = false;
                     rawMsg = "BLOCKED: turret servos are geared together, use TURRET_MODE";
                 }
+                if (raw && (RAW_SERVO_NAME.equals(MatchLoader.LEFT_SERVO_NAME) || RAW_SERVO_NAME.equals(MatchLoader.RIGHT_SERVO_NAME))) {
+                    raw = false;
+                    rawMsg = "BLOCKED: match loader servos share the ramp, use LOADER_MODE";
+                }
                 if (raw) {
                     if (!RAW_SERVO_NAME.equals(rawName)) {
                         rawServo = hardwareMap.tryGet(Servo.class, RAW_SERVO_NAME);
@@ -194,7 +215,6 @@ public class TuningStation extends LinearOpMode {
                     }
                 }
                 boolean rawGate = raw && RAW_SERVO_NAME.equals("turretGate");
-                boolean rawLoader = raw && RAW_SERVO_NAME.equals("matchLoader");
                 boolean rawHood = raw && RAW_SERVO_NAME.equals("turretHood");
 
                 // ---------- turret ----------
@@ -259,7 +279,20 @@ public class TuningStation extends LinearOpMode {
                     else if (gamepad1.right_trigger > 0.1) robot.intake.collect();
                     else robot.intake.stop();
                 }
-                if (pressed(gamepad1.left_bumper, pLB) && LOADER_ON && !rawLoader) robot.matchLoader.toggle();
+                LoaderMode loader = LOADER_MODE == null ? LoaderMode.OFF : LOADER_MODE;
+                if (loader != appliedLoader) {
+                    boolean l = loader != LoaderMode.OFF && loader != LoaderMode.RIGHT_ONLY;
+                    boolean r = loader != LoaderMode.OFF && loader != LoaderMode.LEFT_ONLY;
+                    robot.matchLoader.setPowered(l, r);
+                    appliedLoader = loader;
+                }
+                if (loader == LoaderMode.LEFT_ONLY || loader == LoaderMode.RIGHT_ONLY) {
+                    robot.matchLoader.writeRaw(LOADER_RAW_POS, LOADER_RAW_POS); // the limp one is skipped
+                } else if (loader == LoaderMode.BOTH_RAW) {
+                    robot.matchLoader.writeRaw(LOADER_RAW_POS, LOADER_RAW_POS + MatchLoader.rightOffsetPos);
+                } else if (loader == LoaderMode.GAMEPAD && pressed(gamepad1.left_bumper, pLB)) {
+                    robot.matchLoader.toggle();
+                }
                 pLB = gamepad1.left_bumper;
 
                 // ---------- drive ----------
@@ -304,7 +337,7 @@ public class TuningStation extends LinearOpMode {
                 telemetry.addData("hood", "%.3f", robot.turretHood.getTargetPos());
                 telemetry.addData("turret mode", mode);
                 telemetry.addData("hood / gate / loader", "%s / %s / %s",
-                        HOOD_ON ? "on" : "OFF", GATE_ON ? "on" : "OFF", LOADER_ON ? "on" : "OFF");
+                        HOOD_ON ? "on" : "OFF", GATE_ON ? "on" : "OFF", loader);
                 telemetry.addData("turret", "%.1f deg (%s)", robot.turret.getTurretHeading(), robot.turret.getAimMode());
                 telemetry.addData("alliance", poseStorage.getAlliance());
                 telemetry.addData("shoot on the move", robot.turret.isShootOnTheMove() ? "ON" : "off");
