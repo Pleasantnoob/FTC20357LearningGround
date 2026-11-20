@@ -1,5 +1,6 @@
 package teamcode.RobotContainer;
 
+import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
 import teamcode.Subsystems.Intake;
@@ -55,6 +56,13 @@ public class Robot {
      *                          until setPowered() turns them on.
      */
     public Robot(HardwareMap hardwareMap, boolean turretHoldsCenter) {
+
+        // Bulk reads: one hub call returns every encoder, velocity and analog value at once,
+        // instead of one call per read. AUTO refreshes by itself the second time a value is
+        // read, so nothing has to clear the cache each loop.
+        for (LynxModule hub : hardwareMap.getAll(LynxModule.class)) {
+            hub.setBulkCachingMode(LynxModule.BulkCachingMode.AUTO);
+        }
 
         drivetrain = new Drivetrain(hardwareMap);
         vision = new Vision(hardwareMap);

@@ -36,8 +36,8 @@ public class MainDrive extends LinearOpMode {
 
     // Gamepad 2 Back/Share resets the robot's position to this spot. Put the robot there first.
     // PLACEHOLDERS: the Near Red / Near Blue auto start poses (inches, degrees).
-    public static double RED_RESET_X = 133, RED_RESET_Y = 108, RED_RESET_HEADING_DEG = 180;
-    public static double BLUE_RESET_X = 15, BLUE_RESET_Y = 135, BLUE_RESET_HEADING_DEG = 270;
+    public static double RED_RESET_X = 11, RED_RESET_Y = 36, RED_RESET_HEADING_DEG = 0;
+    public static double BLUE_RESET_X = 129, BLUE_RESET_Y = 9, BLUE_RESET_HEADING_DEG = 90;
 
     private final PoseStorage poseStorage = new PoseStorage();
     private Robot robot;
@@ -98,7 +98,7 @@ public class MainDrive extends LinearOpMode {
                 // FTC Dashboard: field view + graphs (one packet per loop so the field doesn't flicker)
                 TelemetryPacket packet = new TelemetryPacket();
                 DashboardField.draw(packet.fieldOverlay(), pose.x(), pose.y(), pose.heading(), robot.turret);
-                packet.put("rpm", robot.shooter.getRPM());
+                packet.put("rpm", robot.shooter.getLastRPM());
                 packet.put("target rpm", robot.shooter.getTargetRPM());
                 packet.put("flywheel power", robot.shooter.getLastPower());
                 packet.put("battery V", robot.shooter.getBatteryVoltage());
@@ -126,7 +126,7 @@ public class MainDrive extends LinearOpMode {
                 telemetry.addData("lb_motor_power", robot.drivetrain.getLBMotorPower());
                 telemetry.addData("rf_motor_power", robot.drivetrain.getRFMotorPower());
                 telemetry.addData("rb_motor_power", robot.drivetrain.getRBMotorPower());
-                telemetry.addData("ShooterRPM", robot.shooter.getRPM());
+                telemetry.addData("ShooterRPM", robot.shooter.getLastRPM());
                 telemetry.addData("Target RPM", robot.shooter.getTargetRPM());
                 telemetry.addData("Position", "%.1f, %.1f, %.1f deg",
                         pose.x(), pose.y(), Math.toDegrees(pose.heading()));

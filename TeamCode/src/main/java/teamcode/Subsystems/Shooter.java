@@ -117,6 +117,10 @@ public class Shooter {
         }
 
 
+        private double lastRpm = 0;
+        /** RPM measured by the last calculateShooterPID() call. For telemetry, so it doesn't read the motor again. */
+        public double getLastRPM() { return lastRpm; }
+
         public double getLastPower(){
             return lastPower;
         }
@@ -134,6 +138,7 @@ public class Shooter {
 
         public void calculateShooterPID(){
             if (baseTargetRPM == 0) {
+                lastRpm = 0;
                 setShooterMotorPowers(0);
                 return;
             }
@@ -142,7 +147,8 @@ public class Shooter {
             if (VOLTAGE_COMP) {
                 feedForward *= NOMINAL_VOLTAGE / getBatteryVoltage();
             }
-            double error = baseTargetRPM - getRPM();
+            lastRpm = getRPM();
+            double error = baseTargetRPM - lastRpm;
             double feedBack = error * kP;
             setShooterMotorPowers(Range.clip(feedForward + feedBack, -1, 1));
         }

@@ -24,7 +24,7 @@ import teamcode.RobotContainer.SubsystemCommands;
 import teamcode.pedro.Constants;
 
 /**
- * Red solo auto from the garden corner, start (133.9, 107.1, 180).
+ * Red solo auto from the garden corner, start (10.1, 36.9, 0).
  * Drives to the first shooting spot and shoots the preloads, collects from the garden,
  * then drives to the park-side spot and shoots again. Parking isn't written yet.
  * The flywheel PID and turret aim run the whole time; position is saved for TeleOp.
@@ -42,20 +42,20 @@ public class RedGardenCornerSoloAuto extends LinearOpMode {
 
     private final PoseFactory poseFactory = PoseFactory.degrees();
 
-    private final Pose startRedGarden = poseFactory.of(133.8808, 107.1101, 180);
-    private final Pose startToFirstShoot = poseFactory.of(91, 126, 265);
-    private final Pose firstShootToGardenStart = poseFactory.of(91, 126, 0);
-    private final Pose firstShootToGarden = poseFactory.of(133.3849, 134.1465, 0);
-    private final Pose firstShootToGardenControl1 = poseFactory.of(66, 141, 0);
-    private final Pose gardenToParkShootStart = poseFactory.of(133.3849, 134.1465, 0);
-    private final Pose gardenToParkShoot = poseFactory.of(81.5004, 18.7214, 0);
-    private final Pose gardenToParkShootControl1 = poseFactory.of(73.0562, 141.5, 0);
-    private final Pose parkShootToGardenFlower = poseFactory.of(132.1386, 100.2068, 335);
-    private final Pose parkShootToGardenFlowerControl1 = poseFactory.of(70.0464, 139.0067, 0);
-    private final Pose gardenFlowerToFlowerShootStart = poseFactory.of(132.1386, 100.2068, 0);
-    private final Pose gardenFlowerToFlowerShoot = poseFactory.of(90.572, 119.3808, 260);
-    private final Pose point6Start = poseFactory.of(90.572, 119.3808, 180);
-    private final Pose point6 = poseFactory.of(132.6193, 50.4211, 180);
+    private final Pose startRedGarden = poseFactory.of(10.1192, 36.8899, 0);
+    private final Pose startToFirstShoot = poseFactory.of(53, 18, 85);
+    private final Pose firstShootToGardenStart = poseFactory.of(53, 18, 180);
+    private final Pose firstShootToGarden = poseFactory.of(10.6151, 9.8535, 180);
+    private final Pose firstShootToGardenControl1 = poseFactory.of(78, 3, 180);
+    private final Pose gardenToParkShootStart = poseFactory.of(10.6151, 9.8535, 180);
+    private final Pose gardenToParkShoot = poseFactory.of(62.4996, 125.2786, 180);
+    private final Pose gardenToParkShootControl1 = poseFactory.of(70.9438, 2.5, 180);
+    private final Pose parkShootToGardenFlower = poseFactory.of(11.8614, 43.7932, 155);
+    private final Pose parkShootToGardenFlowerControl1 = poseFactory.of(73.9536, 4.9933, 180);
+    private final Pose gardenFlowerToFlowerShootStart = poseFactory.of(11.8614, 43.7932, 180);
+    private final Pose gardenFlowerToFlowerShoot = poseFactory.of(53.428, 24.6192, 80);
+    private final Pose point6Start = poseFactory.of(53.428, 24.6192, 0);
+    private final Pose point6 = poseFactory.of(11.3807, 93.5789, 0);
 
     // ------
     // PATHS

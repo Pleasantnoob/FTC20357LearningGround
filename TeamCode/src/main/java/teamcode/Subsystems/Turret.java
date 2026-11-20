@@ -78,8 +78,6 @@ public class Turret {
     /** Velocity filter, 0..1. Higher = reacts faster but noisier. */
     public static double velocityAlpha = 0.5;
     public static double onTargetTolDeg = 1.5; // only gates the shot; aim itself has no dead zone
-    /** Write deadband in servo units. 0 = send every change (no aim dead zone); only exact repeats are skipped. */
-    public static double writeDeadbandPos = 0;
 
     // ---------------- Optional analog feedback (Axon: 0-3.3V over 360 deg of servo) ----------------
     public static double encoderVoltsAtCenter = 1.65;
@@ -334,23 +332,6 @@ public class Turret {
         aimMode = AimMode.AUTO;
     }
 
-    /** Robot-relative turret angle to the target, clipped to travel. Kept for compatibility. */
-    public double robotRelativeDegrees(double posX, double posY, double robotHeadingRad) {
-        double limit = Math.abs(travelLimitDeg);
-        return Range.clip(robotRelativeDegreesRaw(posX, posY, robotHeadingRad), -limit, limit);
-    }
-
-    private double robotRelativeDegreesRaw(double posX, double posY, double headingRad) {
-        double cos = Math.cos(headingRad);
-        double sin = Math.sin(headingRad);
-        // turret pivot in field coordinates
-        double pivotX = posX + cos * pivotForwardIn - sin * pivotLeftIn;
-        double pivotY = posY + sin * pivotForwardIn + cos * pivotLeftIn;
-
-        double bearingRad = Math.atan2(turretTargetY - pivotY, turretTargetX - pivotX);
-        return Math.toDegrees(normalizeRad(bearingRad - headingRad));
-    }
-
     /** Pinpoint velocity from follower.velocity(): field inches/s and rad/s. Call every loop before aiming. */
     public void setMeasuredVelocity(double vxField, double vyField, double omegaRadPerSec) {
         measVx = vxField;
@@ -433,7 +414,6 @@ public class Turret {
         }
     }
 
-    public void addTrimDeg(double deg) { trimDeg += deg; }
     public void nudgeTrim(int direction) { trimDeg += direction * trimStepDeg; }
     public void resetTrim() { trimDeg = 0; }
     public double getTrimDeg() { return trimDeg; }
@@ -450,7 +430,8 @@ public class Turret {
 
     private void writeServos() {
         double pos = servoPosition(commandedDeg);
-        if (Double.isNaN(lastWrittenPos) || Math.abs(pos - lastWrittenPos) > writeDeadbandPos) {
+        // no dead zone: any change is sent, only exact repeats are skipped
+        if (pos != lastWrittenPos) { // NaN != anything, so the first write always goes out
             // Direction.REVERSE on the right servo does the mirroring, so both get the same number
             // (plus the small offset that lines the two servos up).
             if (leftPowered) leftServo.setPosition(pos);
