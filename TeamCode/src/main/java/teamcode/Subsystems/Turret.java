@@ -87,10 +87,15 @@ public class Turret {
     public static boolean encoderInverted = false;
 
     // ---------------- Targets (field inches). "High" = the half of the field with y above sideSwitchY ----------------
-    public static double redHighX = 84.79, redHighY = 87.32;
-    public static double redLowX = 83.84, redLowY = 50.27;
-    public static double blueHighX = 58.05, blueHighY = 86.41;
-    public static double blueLowX = 57.82, blueLowY = 53.41;
+    // From the manual (TU09 fig 9-9 / 9-10), HIVE pivots at field center:
+    //  - red and blue HIVE centers are 25.5 in apart -> x = 72 +/- 12.75 (red is the high-x side)
+    //  - CELL centers are 30.9 in apart (18.84 gap + 12.04 cell); tipped 30 deg, the up CELL's
+    //    opening sits about 15 in from center -> y = 72 +/- 15
+    // Check on a real field: in TuningStation the aim line should hit the middle of each CELL.
+    public static double redHighX = 84.75, redHighY = 87;
+    public static double redLowX = 84.75, redLowY = 57;
+    public static double blueHighX = 59.25, blueHighY = 87;
+    public static double blueLowX = 59.25, blueLowY = 57;
     public static double sideSwitchY = 72;
     /** The robot must cross this far past the line before the target switches, so it doesn't flicker on the line. */
     public static double sideSwitchHysteresisIn = 3;
