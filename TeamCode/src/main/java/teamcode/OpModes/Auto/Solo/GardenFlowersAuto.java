@@ -81,7 +81,7 @@ public abstract class GardenFlowersAuto extends LinearOpMode {
     }
 
     // ---- Poses: RED values (Pedro inches / degrees), straight from the visualizer ----
-    private final Pose start = p(55.75, 6.75, 180);
+    private final Pose start = p(53.75, 6.75, 90);   // from the .pp.json; turns to 180 during path 1
     private final Pose gardenCorner = p(7.75, 6.75, 180);         // end of path 1
     private final Pose point2 = p(46.75, 125.75, 90);             // far wall, shoot spot
     private final Pose point2Control1 = p(24.75, 72.75, 0);

@@ -2,6 +2,8 @@
 
 Robot code for the BioBuzz season. Branch `BIOBUZZ2627`. Everything we write lives in `TeamCode/src/main/java/teamcode/`; `FtcRobotController/` is the stock FTC SDK, so don't edit it.
 
+`BRINGUP.md` is the step-by-step list for testing and tuning the real robot.
+
 ## Build
 Check it compiles (no robot needed):
 ```bash

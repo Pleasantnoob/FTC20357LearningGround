@@ -135,6 +135,7 @@ public class Turret {
     private double turretTargetY = Field.CENTER;
     private double commandedDeg = 0;
     private double estimatedDeg = 0;
+    private long modelNanos = 0; // last time the timing model was advanced
     private boolean reachable = true;
     private double lastWrittenPos = Double.NaN;
     private boolean zeroHeld = false;
@@ -377,11 +378,6 @@ public class Turret {
                 vy = a * ((y - lastY) / dt) + (1 - a) * vy;
                 omega = a * (normalizeRad(h - lastH) / dt) + (1 - a) * omega;
             }
-            // advance the timing model of where the turret actually is
-            if (dt > 0 && dt < 0.25) {
-                double step = turretDegPerSec * dt;
-                estimatedDeg += Range.clip(commandedDeg - estimatedDeg, -step, step);
-            }
         }
         lastNanos = now;
         lastX = x;
@@ -424,7 +420,22 @@ public class Turret {
     // =====================================================================================
     // Servo output
     // =====================================================================================
+    /**
+     * Timing model of where the turret actually is (used when there's no encoder): it moves
+     * toward the last command at turretDegPerSec. Runs on every command, so it works in every
+     * mode (auto aim, manual, fixed angle), not only when the pose is updated.
+     */
+    private void advanceModel() {
+        long now = System.nanoTime();
+        if (modelNanos != 0) {
+            double step = turretDegPerSec * (now - modelNanos) / 1e9;
+            estimatedDeg += Range.clip(commandedDeg - estimatedDeg, -step, step);
+        }
+        modelNanos = now;
+    }
+
     private void commandDegrees(double degrees) {
+        advanceModel(); // move the estimate toward the OLD command for the time that passed
         double limit = Math.abs(travelLimitDeg);
         commandedDeg = Range.clip(degrees, -limit, limit);
         writeServos();

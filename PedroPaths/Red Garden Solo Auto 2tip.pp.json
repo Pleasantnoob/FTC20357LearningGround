@@ -25,7 +25,7 @@
       "controlPoints": [],
       "heading": {
         "type": "linear",
-        "startDeg": 180,
+        "startDeg": 90,
         "endDeg": 180
       }
     },
