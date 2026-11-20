@@ -26,7 +26,8 @@ import teamcode.Utility.DashboardField;
 import teamcode.pedro.Constants;
 
 /**
- * Blue auto: preloads, garden, two flowers, park. Paths are from the Pedro visualizer.
+ * Red auto: preloads, red garden, two flowers, park. Paths are from the Pedro visualizer
+ * (its (0,0) is the corner by the red garden, so the red HIVE is the low-x one).
  *
  * The turret aims the whole time with the same rule as TeleOp: our CELL on the half of
  * the field the robot is on. So shots from the start / path 6 go into the low-y CELL and
@@ -44,8 +45,8 @@ import teamcode.pedro.Constants;
  * Mechanisms that aren't marked tuned in Tuned.java do nothing here, so this is safe to run early.
  */
 @Config
-@Autonomous(name = "Blue Garden + Flowers", group = "Blue")
-public class BlueGardenFlowersAuto extends LinearOpMode {
+@Autonomous(name = "Red Garden + Flowers", group = "Red")
+public class RedGardenFlowersAuto extends LinearOpMode {
 
     // ---- Timing (ms), tune on the field ----
     /** Longest wait for flywheel + turret to be ready before firing anyway. */
@@ -79,7 +80,7 @@ public class BlueGardenFlowersAuto extends LinearOpMode {
     private final Pose point4Segment1End = poseFactory.of(15.75, 46.75, 90);
     private final Pose point4Segment2Start = poseFactory.of(15.75, 46.75, 90);
     private final Pose point4Segment2End = poseFactory.of(15.75, 46.75, 180);
-    private final Pose point5 = poseFactory.of(8.75, 46.75, 180);              // flower 2 (blue wall)
+    private final Pose point5 = poseFactory.of(8.75, 46.75, 180);              // flower 2 (red wall)
     private final Pose point6 = poseFactory.of(37.75, 6.75, 180);              // shoot spot by the start
     private final Pose point7 = poseFactory.of(9.75, 94.75, 90);               // park (loading zone)
     private final Pose point7Segment1Start = poseFactory.of(9.75, 94.75, 180);
@@ -152,7 +153,7 @@ public class BlueGardenFlowersAuto extends LinearOpMode {
         return sequential(
                 volley(),                         // 4 preloads -> low CELL
                 intakeOn(),
-                follow(follower, path1()),        // sweep the garden
+                follow(follower, path1()),        // sweep the red garden
                 follow(follower, path2()),        // intake still on while crossing
                 intakeOff(),
                 volley(),                         // garden 4 -> high CELL
@@ -173,11 +174,11 @@ public class BlueGardenFlowersAuto extends LinearOpMode {
         robot = new Robot(hardwareMap);
         try {
             PoseStorage poseStorage = new PoseStorage();
-            poseStorage.setAlliance(PoseStorage.Alliance.BLUE);
+            poseStorage.setAlliance(PoseStorage.Alliance.RED);
             follower.setPose(start);
             follower.update();
 
-            telemetry.addLine("Blue Garden + Flowers ready");
+            telemetry.addLine("Red Garden + Flowers ready");
             telemetry.update();
             waitForStart();
             Scheduler.schedule(autoRoutine());

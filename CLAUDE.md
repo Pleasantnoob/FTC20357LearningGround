@@ -86,6 +86,9 @@ The turret is two Axon MAX servos, 1:1. Both servo gears drive one center gear, 
 - **Shooter:** feedforward (kS + kV·rpm, scaled by battery voltage) plus a P term. The gate opens only when RPM and turret are both ready, then stays open for the volley.
 - **Targets:** right now the turret picks our alliance's cell on the robot's side of the field (y = 72 split). The plan is to switch to "aim at our cell that's up", using AprilTags.
 
+## Field coordinates
+Use the Pedro visualizer's frame (visualizer.pedropathing.com): (0, 0) is the corner by the RED garden, x runs along the red-garden wall, y away from it. In this frame the RED HIVE is the low-x one (x ≈ 59) and the blue HIVE the high-x one (x ≈ 85). The older autos (`Auto/Base`, `RedGardenCornerSoloAuto`) and the MainDrive reset poses were made with red on the high-x side, so they are rotated 180° from this frame.
+
 ## Game facts that matter for code (manual TU09: https://ftc-resources.firstinspires.org/ftc/game/manual)
 - Each alliance has a HIVE in the field center: a see-saw with 2 CELLS, and exactly one CELL faces up. Launching into the up CELL tips it, and then the other one is up. Only the up CELL scores.
 - AprilTags (36h11, 3.25 in) come in clusters of 4, stuck on the BOTTOM of each CELL facing DOWN. IDs:
