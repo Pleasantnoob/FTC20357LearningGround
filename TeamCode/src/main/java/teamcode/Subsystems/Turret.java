@@ -467,6 +467,8 @@ public class Turret {
 
     public boolean isTargetReachable() { return reachable; }
     public boolean hasEncoder() { return encoder != null; }
+    /** Raw analog voltage from the Axon feedback wire (NaN if not wired). For calibrating encoderVoltsAtCenter. */
+    public double getEncoderVolts() { return encoder == null ? Double.NaN : encoder.getVoltage(); }
     public double getTurretTargetX() { return turretTargetX; }
     public double getTurretTargetY() { return turretTargetY; }
     public double getTurretHeading() { return commandedDeg; }

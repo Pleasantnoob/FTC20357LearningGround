@@ -86,6 +86,18 @@ The turret is two Axon MAX servos, 1:1. Both servo gears drive one center gear, 
 - **Shooter:** feedforward (kS + kV·rpm, scaled by battery voltage) plus a P term. The gate opens only when RPM and turret are both ready, then stays open for the volley.
 - **Targets:** right now the turret picks our alliance's cell on the robot's side of the field (y = 72 split). The plan is to switch to "aim at our cell that's up", using AprilTags.
 
+## Axon servo setup (turret)
+Set with the Axon programmer (MAX MK2 needs the Programmer MK2 + Axon Software MK2; the old programmer doesn't work with MK2):
+- Loss-of-signal behavior ("Lose PPM protection" / "Loose PWM Protection") = **Release**. The code turns a servo's signal off to make it limp (TuningStation one-servo modes, Tuned switches). On Hold or Neutral the "off" servo keeps pushing and the pair fights.
+- Range / left-right limits = full travel, then measure `Turret.servoRangeDeg` in TuningStation. PWM range in code is 500-2500 us (matches the MAX MK2 spec).
+- Power limit: about 66% when powered from hub servo ports (4.8 V), about 85% on a REV Servo Power Module (6 V). Two MAX servos can each stall at 3.6-4 A, more than the hub servo rail supplies.
+- Sensitivity (dead band) as fine as it goes without the servo humming or twitching while holding still.
+- Both servos same direction (no inversion); left/right matching is done in code (`reverseRight`, `rightOffsetPos`).
+- Leave damping and overload protection at default.
+- Programmer power: USB-C 5 V or XT60 up to 9 V. Never the 12 V robot battery (the programmer alarms and shuts off above 9 V).
+
+Analog feedback (MAX MK2 4th wire): config it as an Analog Input named `turretEncoder`. Axon hasn't published the voltage range, so check it with a multimeter stays at or under 3.3 V before plugging into the hub. Calibrate in TuningStation from the "turret encoder V" graph: volts at center -> `encoderVoltsAtCenter`, change over a known angle -> `encoderServoDegPerVolt`.
+
 ## Field coordinates
 Use the Pedro visualizer's frame (visualizer.pedropathing.com): (0, 0) is the corner by the RED garden, x runs along the red-garden wall, y away from it. In this frame the RED HIVE is the low-x one (x ≈ 59) and the blue HIVE the high-x one (x ≈ 85). Every auto, the reset poses and the turret targets use this frame. (The older autos were drawn with red on the high-x side; they were rotated 180° into this frame on 2026-11-20.)
 

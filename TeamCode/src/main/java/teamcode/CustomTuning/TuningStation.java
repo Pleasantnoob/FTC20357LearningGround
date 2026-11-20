@@ -310,6 +310,11 @@ public class TuningStation extends LinearOpMode {
                 packet.put("turret cmd deg", robot.turret.getTurretHeading());
                 packet.put("turret actual deg", robot.turret.getActualDeg());
                 packet.put("turret on target", robot.turret.isOnTarget());
+                if (robot.turret.hasEncoder()) {
+                    // calibrate: read volts at centerPos -> encoderVoltsAtCenter; at +/-90 deg -> degrees per volt
+                    packet.put("turret encoder V", robot.turret.getEncoderVolts());
+                    packet.put("turret encoder deg", robot.turret.getActualDeg());
+                }
                 if (SHOW_HUB_CURRENT) {
                     double amps = 0;
                     for (LynxModule hub : hubs) amps += hub.getCurrent(CurrentUnit.AMPS);
